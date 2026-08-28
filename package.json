@@ -1,0 +1,22 @@
+{
+  "name": "local-ai-remote",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private web UI for local LM Studio and Ollama models.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail -n server,web -c blue,green \"npm run dev --workspace @local-ai/server\" \"npm run dev --workspace @local-ai/web\"",
+    "build": "npm run build --workspace @local-ai/web && npm run build --workspace @local-ai/server",
+    "start": "npm run start --workspace @local-ai/server",
+    "test": "npm run test --workspace @local-ai/server",
+    "typecheck": "npm run typecheck --workspace @local-ai/server && npm run typecheck --workspace @local-ai/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
