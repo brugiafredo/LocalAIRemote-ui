@@ -8,6 +8,7 @@ import type { ChatMessage, ModelInfo } from "../types";
 import ChatComposer from "../components/ChatComposer.vue";
 import ConversationSettings from "../components/ConversationSettings.vue";
 import MessageBubble from "../components/MessageBubble.vue";
+import ModelCapabilities from "../components/ModelCapabilities.vue";
 import ModelSelector from "../components/ModelSelector.vue";
 
 const app = useAppStore();
@@ -49,7 +50,7 @@ function loadSelectedModel(): void {
 function updateSettings(patch: Partial<Pick<NonNullable<typeof conversation.value>, "systemPrompt" | "parameters">>): void {
   if (conversation.value) conversations.updateConversation(conversation.value.id, patch);
 }
-async function sendMessage(content: string): Promise<void> {
+async function sendMessage(payload: { content: string; images: NonNullable<ChatMessage["images"]> }): Promise<void> {
   const model = selectedModel.value;
   if (!model) {
     ui.showToast("Select a model first", "info");
@@ -60,8 +61,12 @@ async function sendMessage(content: string): Promise<void> {
     return;
   }
   if (!conversation.value) return;
+  if (payload.images.length > 0 && !model.capabilities?.includes("vision")) {
+    ui.showToast("This model does not report image support", "info");
+    return;
+  }
   const active = conversation.value;
-  const userMessage: ChatMessage = { role: "user", content };
+  const userMessage: ChatMessage = { role: "user", content: payload.content, ...(payload.images.length > 0 ? { images: payload.images } : {}) };
   conversations.addMessage(active.id, userMessage);
   conversations.addMessage(active.id, { role: "assistant", content: "" });
   streaming.value = true;
@@ -85,7 +90,7 @@ async function sendMessage(content: string): Promise<void> {
       await nextTick(scrollToBottom);
     }
     if (!contentSoFar.trim()) {
-      throw new ApiError("Ollama finished without returning text. Check the model log and try again.", "EMPTY_PROVIDER_RESPONSE", 502);
+      throw new ApiError("The model finished without returning text. Check the provider log and try again.", "EMPTY_PROVIDER_RESPONSE", 502);
     }
   } catch (error) {
     const message = error instanceof ApiError ? error.message : "The chat request failed";
@@ -108,6 +113,7 @@ async function sendMessage(content: string): Promise<void> {
       </div>
       <div class="model-control">
         <ModelSelector :selected="selectedModel" @select="selectModel" />
+        <ModelCapabilities :model="selectedModel" compact />
         <span class="model-status" :class="selectedModel?.loaded ? 'ready' : 'muted'"><span class="status-dot" :class="selectedModel?.loaded ? 'online' : 'offline'" aria-hidden="true" />{{ statusMessage }}</span>
       </div>
     </div>
@@ -124,7 +130,7 @@ async function sendMessage(content: string): Promise<void> {
       <div class="chat-bottom">
         <div v-if="selectedModel && !selectedModel.loaded" class="inline-alert"><span aria-hidden="true">⌁</span><span class="flex-1">{{ selectedModel.provider === 'lmstudio' ? 'LM Studio will load this model automatically when you send the first message.' : `Load ${selectedModel.name} before chatting.` }}</span><button v-if="selectedModel.provider !== 'lmstudio'" class="text-button" :disabled="app.isBusy(selectedModel)" @click="loadSelectedModel">{{ app.isBusy(selectedModel) ? 'Loading…' : 'Load now' }}</button></div>
         <ConversationSettings v-if="conversation" :conversation="conversation" @update="updateSettings" />
-        <ChatComposer :disabled="loading || !selectedModel || !app.provider(selectedModel.provider).online || (selectedModel.provider === 'ollama' && !selectedModel.loaded)" @send="sendMessage" />
+        <ChatComposer :disabled="loading || !selectedModel || !app.provider(selectedModel.provider).online || (selectedModel.provider === 'ollama' && !selectedModel.loaded)" :can-attach-images="Boolean(selectedModel?.capabilities?.includes('vision'))" @send="sendMessage" />
         <p class="privacy-note">Your prompts stay between this browser and the local server.</p>
       </div>
     </div>

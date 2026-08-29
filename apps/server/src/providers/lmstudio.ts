@@ -1,6 +1,6 @@
 import { AppError, ProviderOfflineError } from "../errors";
 import { fetchWithTimeout, isRecord, numberValue, readJson, stringValue } from "../http";
-import type { AIProvider, ChatChunk, ChatRequest, ModelInfo, ProviderStatus } from "../types";
+import type { AIProvider, ChatChunk, ChatRequest, ModelCapability, ModelInfo, ProviderStatus } from "../types";
 
 interface InternalModel extends ModelInfo {
   instanceId?: string;
@@ -62,6 +62,29 @@ function hasLoadedState(record: Record<string, unknown>, instances: unknown[]): 
   return state === "loaded" || state === "ready" || state === "running";
 }
 
+function modelCapabilities(record: Record<string, unknown>): ModelCapability[] {
+  const capabilities: ModelCapability[] = [];
+  const add = (capability: ModelCapability): void => {
+    if (!capabilities.includes(capability)) capabilities.push(capability);
+  };
+  const raw = record.capabilities;
+  if (Array.isArray(raw)) {
+    for (const value of raw) {
+      if (value === "vision" || value === "image_input") add("vision");
+      if (value === "tool_use" || value === "tools") add("tools");
+      if (value === "reasoning" || value === "thinking") add("reasoning");
+      if (value === "embedding") add("embedding");
+    }
+  } else if (isRecord(raw)) {
+    if (raw.vision === true) add("vision");
+    if (raw.trained_for_tool_use === true || raw.trainedForToolUse === true) add("tools");
+    if (isRecord(raw.reasoning) || raw.reasoning === true) add("reasoning");
+  }
+  if (record.type === "embedding") add("embedding");
+  if (record.type === "vlm") add("vision");
+  return capabilities;
+}
+
 export function normalizeLMStudioModels(payload: unknown): InternalModel[] {
   return arrayFromPayload(payload).flatMap((item): InternalModel[] => {
     if (!isRecord(item)) {
@@ -80,6 +103,8 @@ export function normalizeLMStudioModels(payload: unknown): InternalModel[] {
       name: stringValue(item.display_name) ?? stringValue(item.name) ?? id,
       loaded: hasLoadedState(item, instances),
     };
+    const capabilities = modelCapabilities(item);
+    if (capabilities.length > 0) model.capabilities = capabilities;
     const contextLength = numberValue(item.context_length) ?? numberValue(item.max_context_length);
     const size = numberValue(item.size) ?? numberValue(item.size_bytes);
     if (contextLength !== undefined) {
@@ -95,11 +120,22 @@ export function normalizeLMStudioModels(payload: unknown): InternalModel[] {
   });
 }
 
-function nativeInput(request: ChatRequest): string {
-  return request.messages
+type NativeInputItem = { type: "message"; content: string } | { type: "image"; data_url: string };
+
+export function nativeInput(request: ChatRequest): string | NativeInputItem[] {
+  const messages = request.messages
     .filter((message) => message.role !== "system")
-    .map((message) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`)
-    .join("\n\n");
+    .map((message) => ({
+      message,
+      content: `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`,
+    }));
+  if (!messages.some(({ message }) => (message.images?.length ?? 0) > 0)) {
+    return messages.map(({ content }) => content).join("\n\n");
+  }
+  return [
+    { type: "message", content: messages.map(({ content }) => content).join("\n\n") },
+    ...messages.flatMap(({ message }) => (message.images ?? []).map((image) => ({ type: "image" as const, data_url: image.dataUrl }))),
+  ];
 }
 
 function textFromEvent(value: unknown, eventName: string): string | undefined {

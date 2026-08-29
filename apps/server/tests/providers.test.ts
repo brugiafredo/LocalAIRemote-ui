@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { LMStudioProvider, normalizeLMStudioModels } from "../src/providers/lmstudio";
-import { normalizeOllamaModels, OllamaProvider, parseOllamaNdjson } from "../src/providers/ollama";
+import { LMStudioProvider, nativeInput, normalizeLMStudioModels } from "../src/providers/lmstudio";
+import { normalizeOllamaModels, ollamaMessages, OllamaProvider, parseOllamaNdjson } from "../src/providers/ollama";
 
 describe("provider model normalization", () => {
   it("normalizes LM Studio v1 metadata and loaded instances", () => {
@@ -21,12 +21,40 @@ describe("provider model normalization", () => {
     ]);
   });
 
+  it("normalizes vision, tool, and reasoning capabilities from LM Studio", () => {
+    expect(normalizeLMStudioModels({ models: [{ key: "google/gemma-4", capabilities: { vision: true, trained_for_tool_use: true, reasoning: { allowed_options: ["on"] } } }] })).toEqual([
+      { provider: "lmstudio", id: "google/gemma-4", name: "google/gemma-4", loaded: false, capabilities: ["vision", "tools", "reasoning"] },
+    ]);
+  });
+
   it("merges Ollama installed and running model lists", () => {
     const models = normalizeOllamaModels(
       { models: [{ name: "granite:latest", size: 1024 }] },
       { models: [{ name: "granite:latest" }] },
     );
     expect(models[0]).toMatchObject({ provider: "ollama", id: "granite:latest", loaded: true, size: 1024 });
+  });
+
+  it("normalizes Ollama capabilities returned by /api/show", () => {
+    const models = normalizeOllamaModels(
+      { models: [{ name: "gemma4", size: 1024 }] },
+      { models: [] },
+      { gemma4: { capabilities: ["completion", "vision", "thinking"] } },
+    );
+    expect(models[0]).toMatchObject({ capabilities: ["vision", "reasoning"] });
+  });
+
+  it("maps image data URLs to each provider's native image payload", () => {
+    const request = {
+      provider: "ollama" as const,
+      model: "gemma4",
+      messages: [{ role: "user" as const, content: "What is this?", images: [{ dataUrl: "data:image/png;base64,QUJD", mimeType: "image/png" as const }] }],
+    };
+    expect(ollamaMessages(request)).toEqual([{ role: "user", content: "What is this?", images: ["QUJD"] }]);
+    expect(nativeInput({ ...request, provider: "lmstudio" })).toEqual([
+      { type: "message", content: "User: What is this?" },
+      { type: "image", data_url: "data:image/png;base64,QUJD" },
+    ]);
   });
 
   it("parses Ollama content and thinking chunks and surfaces stream errors", async () => {

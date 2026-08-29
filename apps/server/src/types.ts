@@ -1,10 +1,20 @@
 export type ProviderId = "lmstudio" | "ollama";
+export type ModelCapability = "vision" | "tools" | "reasoning" | "embedding";
+export type ImageMimeType = "image/jpeg" | "image/png" | "image/webp";
+
+export interface ChatImage {
+  dataUrl: string;
+  mimeType: ImageMimeType;
+  name?: string | undefined;
+  size?: number | undefined;
+}
 
 export interface ModelInfo {
   provider: ProviderId;
   id: string;
   name: string;
   loaded: boolean;
+  capabilities?: ModelCapability[];
   contextLength?: number;
   size?: number;
   deletable?: boolean;
@@ -20,6 +30,7 @@ export interface ProviderStatus {
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  images?: ChatImage[] | undefined;
 }
 
 export interface ChatRequest {

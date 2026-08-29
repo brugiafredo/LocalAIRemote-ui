@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../services/api";
-import type { ChatMessage, Conversation, ConversationParameters, ProviderId } from "../types";
+import type { ChatImage, ChatMessage, Conversation, ConversationParameters, ProviderId } from "../types";
 import { useUiStore } from "./ui";
 
 const storageKey = "local-ai-conversations";
@@ -25,6 +25,18 @@ function createId(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function storedImages(value: unknown): ChatImage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const images = value.flatMap((item): ChatImage[] => {
+    if (!item || typeof item !== "object") return [];
+    const image = item as Partial<ChatImage>;
+    if (typeof image.dataUrl !== "string" || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl)) return [];
+    if (image.mimeType !== "image/jpeg" && image.mimeType !== "image/png" && image.mimeType !== "image/webp") return [];
+    return [{ dataUrl: image.dataUrl, mimeType: image.mimeType, ...(typeof image.name === "string" ? { name: image.name.slice(0, 255) } : {}), ...(typeof image.size === "number" ? { size: image.size } : {}) }];
+  });
+  return images.length > 0 ? images.slice(0, 2) : undefined;
+}
+
 function readStored(): Conversation[] {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -45,7 +57,12 @@ function readStored(): Conversation[] {
         title: candidate.title,
         provider,
         model: typeof candidate.model === "string" ? candidate.model : "",
-        messages: candidate.messages.filter((message): message is ChatMessage => typeof message === "object" && message !== null && ["system", "user", "assistant"].includes((message as ChatMessage).role) && typeof (message as ChatMessage).content === "string"),
+        messages: candidate.messages.flatMap((message): ChatMessage[] => {
+          if (typeof message !== "object" || message === null || !["system", "user", "assistant"].includes((message as ChatMessage).role) || typeof (message as ChatMessage).content !== "string") return [];
+          const item = message as ChatMessage & { images?: unknown };
+          const images = storedImages(item.images);
+          return [{ role: item.role, content: item.content, ...(images ? { images } : {}) }];
+        }),
         systemPrompt: typeof candidate.systemPrompt === "string" ? candidate.systemPrompt : "",
         parameters: { ...defaultParameters, ...(candidate.parameters ?? {}) },
         createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : now(),

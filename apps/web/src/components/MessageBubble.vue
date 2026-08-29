@@ -16,7 +16,10 @@ const rendered = computed(() => props.message.role === "assistant" ? renderMarkd
         <span v-if="streaming" class="streaming-label"><span class="pulse-dot" /> generating</span>
       </div>
       <div v-if="message.role === 'assistant'" class="markdown-body" v-html="rendered" />
-      <p v-else class="whitespace-pre-wrap break-words text-[15px] leading-7 text-ink">{{ message.content }}</p>
+      <div v-if="message.images?.length" class="message-images" aria-label="Attached images">
+        <img v-for="(image, imageIndex) in message.images" :key="image.name + '-' + imageIndex" class="message-image" :src="image.dataUrl" :alt="image.name || 'Attached image'" loading="lazy" />
+      </div>
+      <p v-if="message.role === 'user' && message.content" class="whitespace-pre-wrap break-words text-[15px] leading-7 text-ink">{{ message.content }}</p>
       <span v-if="streaming" class="typing-caret" aria-label="Generating response" />
     </div>
   </article>

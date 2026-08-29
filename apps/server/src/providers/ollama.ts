@@ -1,6 +1,6 @@
 import { AppError, ProviderOfflineError } from "../errors";
 import { fetchWithTimeout, isRecord, numberValue, readJson, stringValue } from "../http";
-import type { AIProvider, ChatChunk, ChatRequest, ModelInfo, ProviderStatus } from "../types";
+import type { AIProvider, ChatChunk, ChatImage, ChatRequest, ModelCapability, ModelInfo, ProviderStatus } from "../types";
 
 function modelsArray(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
@@ -23,7 +23,21 @@ function loadedIds(payload: unknown): Set<string> {
   }));
 }
 
-export function normalizeOllamaModels(installedPayload: unknown, runningPayload: unknown): ModelInfo[] {
+function capabilitiesFromPayload(payload: unknown): ModelCapability[] {
+  if (!isRecord(payload)) return [];
+  const raw = payload.capabilities;
+  if (!Array.isArray(raw)) return [];
+  const capabilities: ModelCapability[] = [];
+  for (const value of raw) {
+    if (value === "vision") capabilities.push("vision");
+    if (value === "tools" || value === "tool_use") capabilities.push("tools");
+    if (value === "thinking" || value === "reasoning") capabilities.push("reasoning");
+    if (value === "embedding") capabilities.push("embedding");
+  }
+  return [...new Set(capabilities)];
+}
+
+export function normalizeOllamaModels(installedPayload: unknown, runningPayload: unknown, capabilityPayloads: Record<string, unknown> = {}): ModelInfo[] {
   const running = loadedIds(runningPayload);
   return modelsArray(installedPayload).flatMap((item): ModelInfo[] => {
     if (!isRecord(item)) {
@@ -41,6 +55,8 @@ export function normalizeOllamaModels(installedPayload: unknown, runningPayload:
       loaded: running.has(id),
       deletable: true,
     };
+    const capabilities = capabilitiesFromPayload(capabilityPayloads[id]);
+    if (capabilities.length > 0) model.capabilities = capabilities;
     const contextLength = numberValue(item.context_length) ?? numberValue(item.contextLength);
     const size = numberValue(item.size);
     if (contextLength !== undefined) {
@@ -53,8 +69,17 @@ export function normalizeOllamaModels(installedPayload: unknown, runningPayload:
   });
 }
 
-function ollamaMessages(request: ChatRequest): Array<{ role: "user" | "assistant" | "system"; content: string }> {
-  const messages = request.messages.map((message) => ({ role: message.role, content: message.content }));
+export function ollamaImageData(image: ChatImage): string {
+  const comma = image.dataUrl.indexOf(",");
+  return comma >= 0 ? image.dataUrl.slice(comma + 1) : image.dataUrl;
+}
+
+export function ollamaMessages(request: ChatRequest): Array<{ role: "user" | "assistant" | "system"; content: string; images?: string[] | undefined }> {
+  const messages = request.messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    ...((message.images?.length ?? 0) > 0 ? { images: message.images?.map(ollamaImageData) } : {}),
+  }));
   if (request.systemPrompt?.trim() && !messages.some((message) => message.role === "system")) {
     messages.unshift({ role: "system", content: request.systemPrompt.trim() });
   }
@@ -150,7 +175,24 @@ export class OllamaProvider implements AIProvider {
       fetchWithTimeout(`${baseUrl}/api/ps`),
     ]);
     const [installed, running] = await Promise.all([readJson(installedResponse), readJson(runningResponse)]);
-    return normalizeOllamaModels(installed, running);
+    const capabilityPayloads: Record<string, unknown> = {};
+    await Promise.all(modelsArray(installed).map(async (item) => {
+      if (!isRecord(item)) return;
+      const id = modelId(item);
+      if (!id) return;
+      try {
+        const response = await fetchWithTimeout(`${baseUrl}/api/show`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model: id }),
+        }, 8_000);
+        if (response.ok) capabilityPayloads[id] = await response.json();
+      } catch {
+        // Older Ollama versions may not expose model capabilities. The model
+        // remains usable; the UI simply omits capability badges.
+      }
+    }));
+    return normalizeOllamaModels(installed, running, capabilityPayloads);
   }
 
   async listLoadedModels(): Promise<ModelInfo[]> {

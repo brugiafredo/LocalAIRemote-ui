@@ -19,7 +19,9 @@ export async function buildApp(
   conversations = new ConversationStore(config.dataDir ?? path.resolve(process.cwd(), "data")),
   updates = new UpdateService(config),
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: config.nodeEnv === "development" });
+  // Images are transported as base64 data URLs. Keep the limit bounded while
+  // allowing two 4 MB images plus the conversation JSON envelope.
+  const app = Fastify({ logger: config.nodeEnv === "development", bodyLimit: 12 * 1024 * 1024 });
   await app.register(cors, {
     origin: config.corsOrigins,
   });

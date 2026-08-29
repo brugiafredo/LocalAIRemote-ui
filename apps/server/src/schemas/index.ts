@@ -11,6 +11,22 @@ export const ModelActionSchema = z.object({
 export const ChatMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant"]),
   content: z.string().max(200_000),
+  images: z.array(z.object({
+    dataUrl: z.string().regex(/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/, "Only base64 JPEG, PNG, and WebP images are supported"),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    name: z.string().max(255).optional(),
+    size: z.number().int().positive().max(4_000_000).optional(),
+  }).superRefine((image, context) => {
+    const comma = image.dataUrl.indexOf(",");
+    const encoded = image.dataUrl.slice(comma + 1);
+    const decodedBytes = Math.floor(encoded.length * 3 / 4) - (encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0);
+    if (decodedBytes > 4_000_000) {
+      context.addIssue({ code: z.ZodIssueCode.too_big, maximum: 4_000_000, type: "number", inclusive: true, message: "Each image must be 4 MB or smaller" });
+    }
+    if (!image.dataUrl.startsWith(`data:${image.mimeType};base64,`)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Image MIME type does not match its data" });
+    }
+  })).max(2).optional(),
 });
 
 export const ChatRequestSchema = z.object({
