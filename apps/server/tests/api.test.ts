@@ -23,6 +23,22 @@ class TruncatedStreamProvider extends TestProvider {
   override async *chat(_request: ChatRequest): AsyncIterable<ChatChunk> { yield { text: "hello" }; }
 }
 
+class ToolProvider extends TestProvider {
+  override async listModels(): Promise<ModelInfo[]> {
+    return [{ provider: this.id, id: "test-model", name: "Test Model", loaded: true, capabilities: ["tools"] }];
+  }
+  override async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
+    this.lastRequest = request;
+    if (!request.messages.some((message) => message.role === "tool")) {
+      yield { text: "", toolCalls: [{ id: "tool-1", name: "get_system_info", arguments: "{}" }] };
+      yield { text: "", done: true };
+      return;
+    }
+    yield { text: "The server is healthy." };
+    yield { text: "", done: true };
+  }
+}
+
 class FixedSystemService extends SystemService {
   override async snapshot(): Promise<SystemInfo> {
     return { cpu: { usagePercent: 12, cores: 8 }, memory: { usedBytes: 2, totalBytes: 4, usagePercent: 50 }, gpu: [], operatingSystem: "Test OS", uptimeSeconds: 10, capturedAt: new Date(0).toISOString() };
@@ -67,6 +83,20 @@ describe("unified API", () => {
     expect(response.body).toContain("event: chunk");
     expect(response.body).toContain('data: {"text":"hello"}');
     expect(response.body).toContain("event: done");
+  });
+
+  it("executes only the enabled read-only local tools and continues the model turn", async () => {
+    const provider = new ToolProvider(true);
+    app = await buildApp(config, new ProviderRegistry([provider]), new FixedSystemService());
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { provider: "lmstudio", model: "test-model", enableTools: true, messages: [{ role: "user", content: "Check the server" }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("The server is healthy.");
+    expect(provider.lastRequest?.tools).toHaveLength(3);
+    expect(provider.lastRequest?.messages.at(-1)).toMatchObject({ role: "tool", toolCallId: "tool-1" });
   });
 
   it("exposes the running Git identity", async () => {

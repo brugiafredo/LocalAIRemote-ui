@@ -170,6 +170,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .chat-toolbar { display: flex; min-width: 0; align-items: center; gap: 7px; margin-bottom: 9px; }
 .composer-tool-button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 8px; background: rgb(var(--color-soft) / .55); color: var(--muted); padding: 6px 8px; font-size: 11px; font-weight: 650; transition: .18s ease; }
 .composer-tool-button:hover:not(:disabled) { border-color: #8b5cf6; color: rgb(var(--color-ink)); }
+.composer-tool-button.tool-button-active { border-color: rgb(45 212 191 / .45); background: rgb(45 212 191 / .12); color: #2dd4bf; }
+.composer-tool-button:disabled { cursor: not-allowed; opacity: .45; }
 .chat-model-summary { display: flex; min-width: 0; align-items: baseline; gap: 7px; }
 .chat-model-summary .chat-model-name { max-width: min(260px, 27vw); }
 .chat-model-provider { flex: 0 0 auto; border-left: 1px solid var(--line); padding-left: 7px; color: var(--muted); font-size: 10px; }
@@ -179,6 +181,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .connection-state.offline { color: #fbbf24; }
 .provider-status-banner { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; border: 1px solid rgb(248 113 113 / .24); border-radius: 9px; background: rgb(248 113 113 / .08); color: #fca5a5; padding: 8px 10px; font-size: 11px; }
 .composer-reveal-bar { position: absolute; right: 0; bottom: 0; left: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 12px; border-top: 1px solid var(--line); background: rgb(var(--color-panel) / .92); padding: 9px 12px max(9px, env(safe-area-inset-bottom)); box-shadow: 0 -18px 35px rgb(0 0 0 / .16); backdrop-filter: blur(18px); }
+.composer-container { position: relative; }
+.composer-close-button { position: absolute; top: 8px; right: 8px; z-index: 2; display: grid; height: 28px; width: 28px; place-items: center; border: 1px solid rgb(248 113 113 / .35); border-radius: 999px; background: rgb(127 29 29 / .16); color: #fca5a5; padding: 0; font-size: 20px; line-height: 1; transition: .18s ease; }
+.composer-close-button:hover { border-color: #f87171; background: rgb(127 29 29 / .28); color: #fecaca; }
+.composer-container .composer-shell textarea { padding-right: 42px; }
 
 /* Capability badges are buttons so a tap reveals a readable explanation on touch screens. */
 .capability-badge-wrap { position: relative; display: inline-flex; }
@@ -227,7 +233,6 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .chat-model-summary .chat-model-name { max-width: 35vw; }
   .tool-button-label { display: none; }
   .connection-state { margin-left: auto; }
-  .composer-hide-button { order: 6; }
   .settings-modal .settings-pickers { grid-template-columns: 1fr; }
   .modal-backdrop { align-items: flex-end; padding: 10px; }
   .modal-card { max-height: calc(100dvh - 20px); border-radius: 16px 16px 12px 12px; }

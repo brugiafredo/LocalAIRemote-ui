@@ -37,6 +37,7 @@ export const ChatRequestSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().positive().max(1_000_000).optional(),
   contextLength: z.number().int().positive().max(1_000_000).optional(),
+  enableTools: z.boolean().optional(),
 });
 
 export const AuthLoginSchema = z.object({ password: z.string().min(1).max(500) });

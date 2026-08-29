@@ -27,10 +27,27 @@ export interface ProviderStatus {
   message?: string;
 }
 
+export interface ChatToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface ChatToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
   images?: ChatImage[] | undefined;
+  toolCalls?: ChatToolCall[] | undefined;
+  toolCallId?: string | undefined;
 }
 
 export interface ChatRequest {
@@ -41,11 +58,14 @@ export interface ChatRequest {
   temperature?: number | undefined;
   maxTokens?: number | undefined;
   contextLength?: number | undefined;
+  tools?: ChatToolDefinition[] | undefined;
+  enableTools?: boolean | undefined;
 }
 
 export interface ChatChunk {
   text: string;
   done?: boolean;
+  toolCalls?: ChatToolCall[];
 }
 
 export interface AIProvider {

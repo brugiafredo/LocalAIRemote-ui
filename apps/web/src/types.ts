@@ -98,6 +98,7 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   contextLength?: number;
+  enableTools?: boolean;
 }
 
 export interface ChatStreamChunk {

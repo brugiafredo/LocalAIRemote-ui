@@ -9,6 +9,7 @@ import { AuthService } from "../services/auth";
 import { ConversationStore } from "../services/conversations";
 import { UpdateService } from "../services/update";
 import { BridgeService } from "../services/bridge";
+import { chatWithLocalTools, LOCAL_TOOL_DEFINITIONS } from "../services/tools";
 
 function sendError(reply: FastifyReply, error: unknown): void {
   if (reply.sent) {
@@ -151,7 +152,20 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
       "x-accel-buffering": "no",
     });
     try {
-      const stream = registry.get(body.provider).chat(body);
+      const provider = registry.get(body.provider);
+      let stream: AsyncIterable<ChatChunk>;
+      if (body.enableTools) {
+        const selected = (await provider.listModels()).find((model) => model.id === body.model);
+        if (!selected) {
+          throw new AppError("MODEL_NOT_FOUND", `Model is not available: ${body.provider}/${body.model}`, 404);
+        }
+        if (!selected.capabilities?.includes("tools")) {
+          throw new AppError("VALIDATION_ERROR", "This model does not report tool-call support", 400);
+        }
+        stream = chatWithLocalTools(provider, { ...body, tools: LOCAL_TOOL_DEFINITIONS }, { registry, systemService });
+      } else {
+        stream = provider.chat(body);
+      }
       let completed = false;
       for await (const chunk of stream) {
         completed = chunk.done === true;

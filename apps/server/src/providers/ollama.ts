@@ -1,6 +1,6 @@
 import { AppError, ProviderOfflineError } from "../errors";
 import { fetchWithTimeout, isRecord, numberValue, readJson, stringValue } from "../http";
-import type { AIProvider, ChatChunk, ChatImage, ChatRequest, ModelCapability, ModelInfo, ProviderStatus } from "../types";
+import type { AIProvider, ChatChunk, ChatImage, ChatRequest, ChatToolCall, ModelCapability, ModelInfo, ProviderStatus } from "../types";
 
 function modelsArray(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
@@ -74,11 +74,25 @@ export function ollamaImageData(image: ChatImage): string {
   return comma >= 0 ? image.dataUrl.slice(comma + 1) : image.dataUrl;
 }
 
-export function ollamaMessages(request: ChatRequest): Array<{ role: "user" | "assistant" | "system"; content: string; images?: string[] | undefined }> {
-  const messages = request.messages.map((message) => ({
+type OllamaMessage = {
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  images?: string[] | undefined;
+  tool_calls?: Array<{ function: { name: string; arguments: string } }> | undefined;
+  tool_call_id?: string | undefined;
+};
+
+export function ollamaMessages(request: ChatRequest): OllamaMessage[] {
+  const messages = request.messages.map((message): OllamaMessage => ({
     role: message.role,
     content: message.content,
     ...((message.images?.length ?? 0) > 0 ? { images: message.images?.map(ollamaImageData) } : {}),
+    ...(message.toolCalls?.length ? {
+      tool_calls: message.toolCalls.map((toolCall) => ({
+        function: { name: toolCall.name, arguments: toolCall.arguments },
+      })),
+    } : {}),
+    ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
   }));
   if (request.systemPrompt?.trim() && !messages.some((message) => message.role === "system")) {
     messages.unshift({ role: "system", content: request.systemPrompt.trim() });
@@ -88,6 +102,43 @@ export function ollamaMessages(request: ChatRequest): Array<{ role: "user" | "as
 
 function textValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function serializeToolArguments(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value ?? {}) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+function toolCallsFromOllamaMessage(message: Record<string, unknown> | undefined): ChatToolCall[] {
+  if (!message || !Array.isArray(message.tool_calls)) return [];
+  return message.tool_calls.flatMap((value, index): ChatToolCall[] => {
+    if (!isRecord(value)) return [];
+    const fn = isRecord(value.function) ? value.function : value;
+    const name = stringValue(fn.name);
+    if (!name) return [];
+    return [{
+      id: stringValue(value.id) ?? `ollama-tool-${index + 1}`,
+      name,
+      arguments: serializeToolArguments(fn.arguments),
+    }];
+  });
+}
+
+async function* parseOllamaToolResponse(response: Response): AsyncIterable<ChatChunk> {
+  const payload = await readJson(response);
+  if (!isRecord(payload)) {
+    throw new AppError("PROVIDER_ERROR", "Ollama returned an invalid tool response", 502);
+  }
+  const message = isRecord(payload.message) ? payload.message : undefined;
+  const text = message ? textValue(message.content) : textValue(payload.response);
+  const toolCalls = toolCallsFromOllamaMessage(message);
+  if (text) yield { text };
+  if (toolCalls.length > 0) yield { text: "", toolCalls };
+  yield { text: "", done: true };
 }
 
 export async function* parseOllamaNdjson(response: Response): AsyncIterable<ChatChunk> {
@@ -242,6 +293,30 @@ export class OllamaProvider implements AIProvider {
 
   async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
     const baseUrl = this.requireUrl();
+    if (request.tools?.length) {
+      const response = await fetchWithTimeout(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          model: request.model,
+          messages: ollamaMessages(request),
+          stream: false,
+          think: false,
+          tools: request.tools,
+          keep_alive: -1,
+          options: {
+            ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+            ...(request.contextLength !== undefined ? { num_ctx: request.contextLength } : {}),
+            ...(request.maxTokens !== undefined ? { num_predict: request.maxTokens } : {}),
+          },
+        }),
+      }, 120_000);
+      if (!response.ok) {
+        await readJson(response);
+      }
+      yield* parseOllamaToolResponse(response);
+      return;
+    }
     const response = await fetchWithTimeout(`${baseUrl}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/x-ndjson" },

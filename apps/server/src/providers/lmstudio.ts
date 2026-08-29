@@ -1,6 +1,6 @@
 import { AppError, ProviderOfflineError } from "../errors";
 import { fetchWithTimeout, isRecord, numberValue, readJson, stringValue } from "../http";
-import type { AIProvider, ChatChunk, ChatRequest, ModelCapability, ModelInfo, ProviderStatus } from "../types";
+import type { AIProvider, ChatChunk, ChatRequest, ChatToolCall, ModelCapability, ModelInfo, ProviderStatus } from "../types";
 
 interface InternalModel extends ModelInfo {
   instanceId?: string;
@@ -139,14 +139,29 @@ export function nativeInput(request: ChatRequest): string | NativeInputItem[] {
 }
 
 type OpenAIMessage = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string | Array<Record<string, unknown>>;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
 };
 
 function openAiMessages(request: ChatRequest): OpenAIMessage[] {
   const messages = request.messages.map((message): OpenAIMessage => {
+    if (message.role === "tool") {
+      return { role: "tool", content: message.content, ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}) };
+    }
     if (!message.images?.length) {
-      return { role: message.role, content: message.content };
+      return {
+        role: message.role,
+        content: message.content,
+        ...(message.toolCalls?.length ? {
+          tool_calls: message.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            type: "function" as const,
+            function: { name: toolCall.name, arguments: toolCall.arguments },
+          })),
+        } : {}),
+      };
     }
     return {
       role: message.role,
@@ -160,6 +175,56 @@ function openAiMessages(request: ChatRequest): OpenAIMessage[] {
     messages.unshift({ role: "system", content: request.systemPrompt.trim() });
   }
   return messages;
+}
+
+function contentText(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return undefined;
+  const text = value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    return typeof item.text === "string" ? [item.text] : [];
+  }).join("");
+  return text || undefined;
+}
+
+function serializeToolArguments(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value ?? {}) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+function toolCallsFromOpenAiPayload(payload: unknown): ChatToolCall[] {
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) return [];
+  const firstChoice = payload.choices[0];
+  if (!isRecord(firstChoice) || !isRecord(firstChoice.message) || !Array.isArray(firstChoice.message.tool_calls)) return [];
+  return firstChoice.message.tool_calls.flatMap((value, index): ChatToolCall[] => {
+    if (!isRecord(value)) return [];
+    const fn = isRecord(value.function) ? value.function : value;
+    const name = stringValue(fn.name);
+    if (!name) return [];
+    return [{
+      id: stringValue(value.id) ?? `lmstudio-tool-${index + 1}`,
+      name,
+      arguments: serializeToolArguments(fn.arguments),
+    }];
+  });
+}
+
+async function* parseLMStudioToolResponse(response: Response): AsyncIterable<ChatChunk> {
+  const payload = await readJson(response);
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) {
+    throw new AppError("PROVIDER_ERROR", "LM Studio returned an invalid tool response", 502);
+  }
+  const firstChoice = payload.choices[0];
+  const message = isRecord(firstChoice) && isRecord(firstChoice.message) ? firstChoice.message : undefined;
+  const text = message ? contentText(message.content) : undefined;
+  const toolCalls = toolCallsFromOpenAiPayload(payload);
+  if (text) yield { text };
+  if (toolCalls.length > 0) yield { text: "", toolCalls };
+  yield { text: "", done: true };
 }
 
 function textValue(value: unknown): string | undefined {
@@ -370,6 +435,26 @@ export class LMStudioProvider implements AIProvider {
 
   async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
     const baseUrl = this.requireUrl();
+    if (request.tools?.length) {
+      const response = await fetchWithTimeout(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          model: request.model,
+          messages: openAiMessages(request),
+          stream: false,
+          tools: request.tools,
+          tool_choice: "auto",
+          ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+          ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+        }),
+      }, 120_000);
+      if (!response.ok) {
+        await readJson(response);
+      }
+      yield* parseLMStudioToolResponse(response);
+      return;
+    }
     const body: Record<string, unknown> = {
       model: request.model,
       input: nativeInput(request),

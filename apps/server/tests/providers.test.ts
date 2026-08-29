@@ -147,4 +147,57 @@ describe("offline provider handling", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("sends read-only tools to Ollama and normalizes returned tool calls", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody = "";
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = typeof init?.body === "string" ? init.body : "";
+      return new Response(JSON.stringify({ message: { role: "assistant", tool_calls: [{ id: "call-1", function: { name: "get_system_info", arguments: {} } }] } }), { headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    try {
+      const chunks = [];
+      for await (const chunk of new OllamaProvider("http://ollama.test").chat({
+        provider: "ollama",
+        model: "qwen3",
+        messages: [{ role: "user", content: "Check the server" }],
+        tools: [{ type: "function", function: { name: "get_system_info", description: "Read system info", parameters: { type: "object" } } }],
+      })) {
+        chunks.push(chunk);
+      }
+      expect(JSON.parse(requestBody)).toMatchObject({ model: "qwen3", stream: false, tools: [{ type: "function", function: { name: "get_system_info" } }] });
+      expect(chunks).toEqual([{ text: "", toolCalls: [{ id: "call-1", name: "get_system_info", arguments: "{}" }] }, { text: "", done: true }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("uses LM Studio's OpenAI-compatible endpoint for read-only tools", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestUrl = "";
+    let requestBody = "";
+    globalThis.fetch = (async (input, init) => {
+      requestUrl = String(input);
+      requestBody = typeof init?.body === "string" ? init.body : "";
+      return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-2", type: "function", function: { name: "list_local_models", arguments: "{}" } }] } }] }), { headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    try {
+      const chunks = [];
+      for await (const chunk of new LMStudioProvider("http://lmstudio.test").chat({
+        provider: "lmstudio",
+        model: "local/model",
+        messages: [{ role: "user", content: "List models" }],
+        tools: [{ type: "function", function: { name: "list_local_models", description: "List models", parameters: { type: "object" } } }],
+      })) {
+        chunks.push(chunk);
+      }
+      expect(requestUrl).toBe("http://lmstudio.test/v1/chat/completions");
+      expect(JSON.parse(requestBody)).toMatchObject({ model: "local/model", stream: false, tool_choice: "auto", tools: [{ type: "function", function: { name: "list_local_models" } }] });
+      expect(chunks).toEqual([{ text: "", toolCalls: [{ id: "call-2", name: "list_local_models", arguments: "{}" }] }, { text: "", done: true }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

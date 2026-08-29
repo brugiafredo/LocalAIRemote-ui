@@ -20,6 +20,7 @@ const loading = ref(false);
 const modelModalOpen = ref(false);
 const settingsModalOpen = ref(false);
 const composerHidden = ref(false);
+const toolsEnabled = ref(false);
 
 const conversation = computed(() => conversations.activeConversation);
 const selectedModel = computed(() => {
@@ -52,6 +53,7 @@ const toolsAvailable = computed(() => Boolean(selectedModel.value?.capabilities?
 
 watch(() => conversations.activeId, () => void nextTick(scrollToBottom));
 watch(() => conversation.value?.messages.length, () => void nextTick(scrollToBottom));
+watch(() => [selectedModel.value?.provider, selectedModel.value?.id], () => { toolsEnabled.value = false; });
 
 function scrollToBottom(): void {
   if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight;
@@ -74,8 +76,10 @@ function updateSettings(patch: Partial<Pick<NonNullable<typeof conversation.valu
 async function retryConnection(): Promise<void> {
   await app.refresh();
 }
-function openTools(): void {
-  ui.showToast(toolsAvailable.value ? "This model reports tool support, but tool execution is not enabled in Local AI yet." : "This model does not report tool support.", "info");
+function toggleTools(): void {
+  if (!toolsAvailable.value) return;
+  toolsEnabled.value = !toolsEnabled.value;
+  ui.showToast(toolsEnabled.value ? "Safe read-only local tools enabled" : "Local tools disabled", "info");
 }
 async function sendMessage(payload: { content: string; images: NonNullable<ChatMessage["images"]> }): Promise<void> {
   const model = selectedModel.value;
@@ -109,6 +113,7 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
       temperature: active.parameters.temperature,
       maxTokens: active.parameters.maxTokens,
       contextLength: active.parameters.contextLength,
+      ...(toolsAvailable.value ? { enableTools: toolsEnabled.value } : {}),
     };
     let contentSoFar = "";
     for await (const chunk of api.chat(request)) {
@@ -157,10 +162,9 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
           </div>
           <span v-else class="text-muted">Choose a model</span>
           <ModelCapabilities :model="selectedModel" compact />
-          <button type="button" class="composer-tool-button" :disabled="!toolsAvailable" :aria-label="toolsAvailable ? 'Open tools' : 'Tools unavailable for this model'" :title="toolsAvailable ? 'Tools are not enabled in Local AI yet' : 'This model does not report tool support'" @click="openTools"><span aria-hidden="true">⌘</span><span class="tool-button-label">Tools</span></button>
+          <button type="button" class="composer-tool-button" :class="{ 'tool-button-active': toolsEnabled }" :disabled="!toolsAvailable" :aria-pressed="toolsEnabled" :aria-label="toolsAvailable ? (toolsEnabled ? 'Disable local tools' : 'Enable local tools') : 'Tools unavailable for this model'" :title="toolsAvailable ? (toolsEnabled ? 'Disable safe read-only local tools' : 'Enable safe read-only local tools') : 'This model does not report tool support'" @click="toggleTools"><span aria-hidden="true">⌘</span><span class="tool-button-label">Tools</span></button>
           <button type="button" class="composer-tool-button" aria-label="Open advanced conversation options" title="Advanced conversation options" @click="settingsModalOpen = true"><span aria-hidden="true">⚙</span><span class="tool-button-label">Options</span></button>
           <span class="connection-state" :class="connection.tone" :title="connection.detail"><span class="status-dot" :class="connection.tone === 'online' ? 'online' : 'offline'" aria-hidden="true" /><span>{{ connection.label }}</span></span>
-          <button type="button" class="composer-tool-button composer-hide-button" aria-label="Hide composer" title="Hide composer to read" @click="composerHidden = true"><span aria-hidden="true">×</span><span class="tool-button-label">Hide</span></button>
         </div>
         <div v-if="connection.tone === 'offline'" class="provider-status-banner" role="status">
           <span class="status-dot offline" aria-hidden="true" />
@@ -168,7 +172,10 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
           <button type="button" class="text-button" :disabled="app.loadingModels" @click="retryConnection">{{ app.loadingModels ? 'Checking…' : 'Check again' }}</button>
         </div>
         <div v-if="selectedModel && !selectedModel.loaded" class="inline-alert"><span aria-hidden="true">⌁</span><span class="flex-1">{{ selectedModel.provider === 'lmstudio' ? 'LM Studio will load this model automatically when you send the first message.' : `Load ${selectedModel.name} before chatting.` }}</span><button v-if="selectedModel.provider !== 'lmstudio'" class="text-button" :disabled="app.isBusy(selectedModel)" @click="loadSelectedModel">{{ app.isBusy(selectedModel) ? 'Loading…' : 'Load now' }}</button></div>
-        <ChatComposer :disabled="composerDisabled" :can-attach-images="Boolean(selectedModel?.capabilities?.includes('vision'))" @send="sendMessage" />
+        <div class="composer-container">
+          <button type="button" class="composer-close-button" aria-label="Hide composer" title="Hide composer to read" @click="composerHidden = true"><span aria-hidden="true">×</span></button>
+          <ChatComposer :disabled="composerDisabled" :can-attach-images="Boolean(selectedModel?.capabilities?.includes('vision'))" @send="sendMessage" />
+        </div>
         <p class="privacy-note">Your prompts stay between this browser and the local server.</p>
       </div>
     </div>
