@@ -147,6 +147,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 @media (min-width: 640px) { .model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.system-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.version-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.settings-pickers { grid-template-columns: repeat(3, minmax(0, 1fr)); }.metric-wide { grid-column: span 2; }.skeleton-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .sidebar { transform: translateX(0); }.app-frame { margin-left: 264px; }.topbar { padding: 0 32px; }.main-content { min-height: calc(100vh - 68px); }.page-shell { padding: 54px 38px 72px; }.model-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.system-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }.metric-wide { grid-column: span 2; }.skeleton-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }.gpu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 639px) { .page-heading, .chat-heading { align-items: flex-start; flex-direction: column; }.model-control { width: 100%; justify-items: stretch; }.model-select-wrap { min-width: 0; }.chat-panel { margin-inline: -4px; border-radius: 13px; }.message-list { min-height: 390px; max-height: calc(100vh - 360px); padding-inline: 14px; }.host-card { grid-template-columns: 1fr; }.live-indicator { align-self: flex-start; } }
+.chat-shell { height: 100vh; min-height: 0; overflow: hidden; }
+.chat-shell .app-frame { height: 100%; min-height: 0; }
+.chat-shell .main-content { height: calc(100vh - 68px); min-height: 0; overflow: hidden; }
+.chat-shell .chat-page { height: 100%; min-height: 0; }
 .chat-page { display: flex; height: calc(100vh - 68px); height: calc(100dvh - 68px); min-height: 0; flex-direction: column; overflow: hidden; padding-bottom: 24px; }
 .chat-page .page-heading { flex: 0 0 auto; margin-bottom: 18px; }
 .chat-page .chat-panel { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
@@ -212,6 +216,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .modal-footer { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding: 12px 20px; }
 
 @media (max-width: 639px) {
+  .chat-shell { height: 100dvh; }
+  .chat-shell .main-content { height: calc(100dvh - 68px); }
   .main-content { min-height: calc(100dvh - 68px); }
   .chat-page { height: calc(100dvh - 68px); }
   .chat-page .message-list { padding-bottom: 12px; }

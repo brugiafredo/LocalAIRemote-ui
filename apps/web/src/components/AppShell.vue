@@ -91,7 +91,7 @@ function removeConversation(id: string): void {
 </script>
 
 <template>
-  <div class="min-h-screen bg-canvas text-ink">
+  <div class="min-h-screen bg-canvas text-ink" :class="{ 'chat-shell': route.name === 'chat' }">
     <div v-if="ui.drawerOpen" class="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" @click="ui.setDrawer(false)" />
     <aside class="sidebar" :class="{ 'sidebar-open': ui.drawerOpen }" aria-label="Main navigation">
       <div class="flex items-center gap-3 px-4 py-5">
