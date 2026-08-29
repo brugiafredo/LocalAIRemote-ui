@@ -203,7 +203,9 @@ export class UpdateService {
     try {
       if (!/^[A-Za-z0-9._/-]+$/.test(this.config.updateBranch) || this.config.updateBranch.startsWith("-")) throw new AppError("UPDATE_FAILED", "Invalid update branch configuration", 500);
       await this.git(["pull", "--ff-only", "origin", this.config.updateBranch]);
-      await this.npm(["install"]);
+      // The service normally runs with NODE_ENV=production, but the production
+      // build still needs devDependencies such as vue-tsc and Vite.
+      await this.npm(["install", "--include=dev"]);
       await this.npm(["run", "build"]);
       status.currentVersion = await this.currentVersion();
       status.buildVersion = await this.currentBuildVersion();
