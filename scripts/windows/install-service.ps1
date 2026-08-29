@@ -36,7 +36,7 @@ $xml = @"
   <arguments>apps/server/dist/index.js</arguments>
   <workingdirectory>$ProjectRoot</workingdirectory>
   <logpath>$ProjectRoot\logs</logpath>
-  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="3 sec" />
   <onfailure action="restart" delay="30 sec" />
   <onfailure action="none" />
   <startmode>Automatic</startmode>

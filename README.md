@@ -102,7 +102,7 @@ To remove the service without deleting the project:
 - LM Studio models are identified using the current v1 `key` field. An unloaded LM Studio model can be sent a first chat request and LM Studio can auto-load it; Ollama models still use explicit keep-alive load/unload actions.
 - Ollama model downloads and deletion are available from the Models page. LM Studio downloads and deletion remain managed by the LM Studio application.
 - Conversations are persisted server-side in `data/conversations.json` and mirrored to browser localStorage. Optional in-memory-session password authentication is controlled by `AUTH_ENABLED` and `AUTH_PASSWORD`.
-- Remote updates are opt-in (`UPDATE_ENABLED=false` by default). The System page can run a fixed fast-forward-only pull, install, build, and service restart; arbitrary shell commands are never accepted.
+- Remote updates are opt-in (`UPDATE_ENABLED=false` by default). The System page can run a fixed fast-forward-only pull, install, build, and service restart; after a successful update the page waits for the restarted service and reloads with a cache-busting URL. WinSW receives a non-zero restart exit code; arbitrary shell commands are never accepted.
 - All API errors use `{ error: true, code, message }` and production responses do not expose stack traces.
 
 ## MVP scope

@@ -82,9 +82,11 @@ export class UpdateService {
       await execFileAsync(npm, ["run", "build"], { cwd, timeout: 30 * 60_000, windowsHide: true });
       status.currentVersion = await this.currentVersion();
       status.state = "restart-required";
-      status.message = "Update installed; restarting the service";
+      status.message = "Update installed; requesting a service restart";
       if (this.config.nodeEnv === "production") {
-        const timer = setTimeout(() => process.exit(0), 1_000);
+        // WinSW's onfailure policy restarts the process only after a non-zero exit.
+        // Exit 75 after the response has had time to flush so the service manager reloads the build.
+        const timer = setTimeout(() => process.exit(75), 1_000);
         timer.unref();
       }
     } catch (error) {

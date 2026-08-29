@@ -234,7 +234,7 @@ UPDATE_TOKEN=un-token-largo-y-aleatorio
 UPDATE_BRANCH=master
 ```
 
-En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y reinicia el proceso para que WinSW cargue la nueva versión. No se aceptan comandos arbitrarios desde el navegador.
+En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y solicita a WinSW el reinicio del proceso. La interfaz espera al menos 5 segundos, comprueba que el servidor volvió a responder y fuerza una recarga con una URL sin caché para mostrar el frontend actualizado. No se aceptan comandos arbitrarios desde el navegador.
 
 El repositorio debe tener el remoto Git configurado y la cuenta que ejecuta WinSW debe poder leerlo. Usa esta función sólo dentro de Tailscale; no publiques el puerto en Internet.
 

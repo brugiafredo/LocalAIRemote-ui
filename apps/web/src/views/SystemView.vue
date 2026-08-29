@@ -10,6 +10,7 @@ const loading = ref(true);
 const update = ref<UpdateStatus | null>(null);
 const updateBusy = ref(false);
 const updateToken = ref(localStorage.getItem("local-ai-update-token") || "");
+const updateReloadDelayMs = 5_000;
 let timer: number | undefined;
 let updateTimer: number | undefined;
 
@@ -32,10 +33,31 @@ async function checkForUpdate(): Promise<void> {
   catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to check for updates", "error"); }
   finally { updateBusy.value = false; }
 }
+async function waitForUpdatedServer(): Promise<void> {
+  await new Promise<void>((resolve) => window.setTimeout(resolve, updateReloadDelayMs));
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await api.health();
+      return;
+    } catch {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
+    }
+  }
+}
+function forceReload(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set("update", Date.now().toString());
+  window.location.replace(url.toString());
+}
 async function installUpdate(): Promise<void> {
   if (!window.confirm("Pull the latest code, rebuild the app, and restart the service?")) return;
   updateBusy.value = true;
-  try { update.value = await api.triggerUpdate(updateToken.value || undefined); }
+  try {
+    update.value = await api.triggerUpdate(updateToken.value || undefined);
+    ui.showToast("Update installed. Reloading in 5 seconds…", "success");
+    await waitForUpdatedServer();
+    forceReload();
+  }
   catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to install update", "error"); }
   finally { updateBusy.value = false; }
 }
