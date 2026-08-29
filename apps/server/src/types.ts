@@ -54,6 +54,7 @@ export interface ChatRequest {
   provider: ProviderId;
   model: string;
   messages: ChatMessage[];
+  conversationId?: string | undefined;
   systemPrompt?: string | undefined;
   temperature?: number | undefined;
   maxTokens?: number | undefined;

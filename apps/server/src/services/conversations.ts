@@ -70,4 +70,36 @@ export class ConversationStore {
     this.writeLock = operation.then(() => undefined, () => undefined);
     await operation;
   }
+
+  /**
+   * Completes a chat without relying on the browser staying connected. This is
+   * used when iOS suspends a PWA and closes its SSE connection mid-response.
+   */
+  async saveChatResult(userId: string, fallback: Conversation, assistantContent: string): Promise<void> {
+    const operation = this.writeLock.then(async () => {
+      const records = await this.read();
+      const existing = records.find((item) => item.id === fallback.id && item.ownerId === userId);
+      const messages = existing ? existing.messages.map((message) => ({ ...message })) : fallback.messages.map((message) => ({ ...message }));
+      const last = messages[messages.length - 1];
+      if (last?.role === "assistant") {
+        last.content = assistantContent;
+      } else {
+        messages.push({ role: "assistant", content: assistantContent });
+      }
+      const next: StoredConversation = existing
+        ? { ...existing, messages, updatedAt: new Date().toISOString() }
+        : {
+            ...fallback,
+            messages,
+            ownerId: userId,
+            visibility: fallback.visibility ?? "shared",
+            sharedWith: fallback.sharedWith ?? [],
+            updatedAt: new Date().toISOString(),
+          };
+      const without = records.filter((item) => !(item.id === next.id && item.ownerId === userId));
+      await this.write([next, ...without]);
+    });
+    this.writeLock = operation.then(() => undefined, () => undefined);
+    await operation;
+  }
 }

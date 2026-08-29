@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { api, ApiError } from "../services/api";
 import { useAppStore } from "../stores/app";
 import { useConversationStore } from "../stores/conversations";
@@ -21,6 +21,8 @@ const modelModalOpen = ref(false);
 const settingsModalOpen = ref(false);
 const composerHidden = ref(false);
 const toolsEnabled = ref(false);
+const backgroundedDuringRequest = ref(false);
+let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
 
 const conversation = computed(() => conversations.activeConversation);
 const selectedModel = computed(() => {
@@ -54,6 +56,29 @@ const toolsAvailable = computed(() => Boolean(selectedModel.value?.capabilities?
 watch(() => conversations.activeId, () => void nextTick(scrollToBottom));
 watch(() => conversation.value?.messages.length, () => void nextTick(scrollToBottom));
 watch(() => [selectedModel.value?.provider, selectedModel.value?.id], () => { toolsEnabled.value = false; });
+
+function scheduleRemoteRecovery(): void {
+  void conversations.hydrateRemote();
+  if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+  recoveryTimer = setTimeout(() => {
+    recoveryTimer = undefined;
+    void conversations.hydrateRemote();
+  }, 1_200);
+}
+
+function handleVisibilityChange(): void {
+  if (document.visibilityState === "hidden") {
+    if (loading.value) backgroundedDuringRequest.value = true;
+    return;
+  }
+  if (backgroundedDuringRequest.value) scheduleRemoteRecovery();
+}
+
+onMounted(() => document.addEventListener("visibilitychange", handleVisibilityChange));
+onUnmounted(() => {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
+});
 
 function scrollToBottom(): void {
   if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight;
@@ -97,6 +122,7 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
     return;
   }
   const active = conversation.value;
+  backgroundedDuringRequest.value = false;
   const userMessage: ChatMessage = { role: "user", content: payload.content, ...(payload.images.length > 0 ? { images: payload.images } : {}) };
   conversations.addMessage(active.id, userMessage);
   conversations.addMessage(active.id, { role: "assistant", content: "" });
@@ -108,6 +134,7 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
     const request = {
       provider: model.provider,
       model: model.id,
+      conversationId: active.id,
       messages: requestMessages,
       ...(active.systemPrompt.trim() ? { systemPrompt: active.systemPrompt } : {}),
       temperature: active.parameters.temperature,
@@ -125,6 +152,11 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
       throw new ApiError("The model finished without returning text. Check the provider log and try again.", "EMPTY_PROVIDER_RESPONSE", 502);
     }
   } catch (error) {
+    if (backgroundedDuringRequest.value) {
+      ui.showToast("La PWA se suspendió durante la respuesta; recuperando la conversación desde el servidor…", "info");
+      scheduleRemoteRecovery();
+      return;
+    }
     if (error instanceof ApiError && error.code === "SERVER_OFFLINE") {
       app.setServerOnline(false);
     }

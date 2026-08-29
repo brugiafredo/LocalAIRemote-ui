@@ -137,8 +137,9 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
 
   app.post("/api/chat", async (request, reply) => {
     let body;
+    let user;
     try {
-      auth.requireUser(request);
+      user = auth.requireUser(request);
       body = ChatRequestSchema.parse(request.body);
     } catch (error) {
       sendError(reply, error);
@@ -151,6 +152,16 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
       connection: "keep-alive",
       "x-accel-buffering": "no",
     });
+    let clientConnected = true;
+    reply.raw.once("close", () => { clientConnected = false; });
+    const sendToClient = (event: "chunk" | "done" | "error", payload: ChatChunk | { error: true; code: string; message: string }): void => {
+      if (!clientConnected || reply.raw.destroyed || reply.raw.writableEnded) return;
+      try {
+        writeSse(reply, event, payload);
+      } catch {
+        clientConnected = false;
+      }
+    };
     try {
       const provider = registry.get(body.provider);
       let stream: AsyncIterable<ChatChunk>;
@@ -167,22 +178,47 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
         stream = provider.chat(body);
       }
       let completed = false;
+      let content = "";
       for await (const chunk of stream) {
+        content += chunk.text;
         completed = chunk.done === true;
-        writeSse(reply, chunk.done ? "done" : "chunk", chunk);
+        sendToClient(chunk.done ? "done" : "chunk", chunk);
+      }
+      if (body.conversationId) {
+        const timestamp = new Date().toISOString();
+        const firstUserMessage = body.messages.find((message) => message.role === "user")?.content.trim();
+        try {
+          await conversations.saveChatResult(user.id, {
+            id: body.conversationId,
+            title: firstUserMessage?.slice(0, 80) || "New conversation",
+            provider: body.provider,
+            model: body.model,
+            messages: body.messages,
+            systemPrompt: body.systemPrompt ?? "",
+            parameters: {
+              temperature: body.temperature ?? 0.7,
+              maxTokens: body.maxTokens ?? 1024,
+              contextLength: body.contextLength ?? 4096,
+            },
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }, content);
+        } catch (error) {
+          request.log.error({ err: error }, "Unable to persist the completed chat");
+        }
       }
       if (!completed) {
-        writeSse(reply, "done", { text: "", done: true });
+        sendToClient("done", { text: "", done: true });
       }
-      if (!reply.raw.writableEnded) {
+      if (clientConnected && !reply.raw.writableEnded && !reply.raw.destroyed) {
         reply.raw.end();
       }
     } catch (error) {
       const appError = error instanceof AppError
         ? error
         : new AppError("PROVIDER_ERROR", error instanceof Error && error.message ? error.message : "The provider chat request failed", 502);
-      if (!reply.raw.writableEnded) {
-        writeSse(reply, "error", { error: true, code: appError.code, message: appError.message });
+      if (clientConnected && !reply.raw.writableEnded && !reply.raw.destroyed) {
+        sendToClient("error", { error: true, code: appError.code, message: appError.message });
         reply.raw.end();
       }
     }

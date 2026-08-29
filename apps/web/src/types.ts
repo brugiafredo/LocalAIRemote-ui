@@ -94,6 +94,7 @@ export interface ChatRequest {
   provider: ProviderId;
   model: string;
   messages: ChatMessage[];
+  conversationId?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;

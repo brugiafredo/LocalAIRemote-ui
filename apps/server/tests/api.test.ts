@@ -5,6 +5,7 @@ import { ProviderRegistry } from "../src/providers/registry";
 import type { AIProvider, ChatChunk, ChatRequest, ModelInfo, ProviderStatus, SystemInfo } from "../src/types";
 import type { AppConfig } from "../src/config";
 import { SystemService } from "../src/services/system";
+import { ConversationStore } from "../src/services/conversations";
 
 class TestProvider implements AIProvider {
   readonly id = "lmstudio" as const;
@@ -97,6 +98,22 @@ describe("unified API", () => {
     expect(response.body).toContain("The server is healthy.");
     expect(provider.lastRequest?.tools).toHaveLength(3);
     expect(provider.lastRequest?.messages.at(-1)).toMatchObject({ role: "tool", toolCallId: "tool-1" });
+  });
+
+  it("persists the completed assistant message using the conversation id", async () => {
+    const dataDir = `/tmp/local-ai-chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    app = await buildApp(config, new ProviderRegistry([new TestProvider(true)]), new FixedSystemService(), undefined, new ConversationStore(dataDir));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { provider: "lmstudio", model: "test-model", conversationId: "conversation-1", messages: [{ role: "user", content: "Hello" }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("hello");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const conversations = await app.inject({ method: "GET", url: "/api/conversations" });
+    expect(conversations.statusCode).toBe(200);
+    expect(conversations.json()).toMatchObject([{ id: "conversation-1", messages: [{ role: "user", content: "Hello" }, { role: "assistant", content: "hello" }] }]);
   });
 
   it("exposes the running Git identity", async () => {

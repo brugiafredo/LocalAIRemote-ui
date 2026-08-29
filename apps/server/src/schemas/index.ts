@@ -33,6 +33,7 @@ export const ChatRequestSchema = z.object({
   provider: ProviderIdSchema,
   model: z.string().trim().min(1).max(500),
   messages: z.array(ChatMessageSchema).min(1).max(200),
+  conversationId: z.string().trim().min(1).max(200).optional(),
   systemPrompt: z.string().max(50_000).optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().positive().max(1_000_000).optional(),
