@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { exec, execFile, execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -8,6 +8,7 @@ import type { AppConfig } from "../config";
 import { AppError } from "../errors";
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 function updateErrorDetail(error: unknown): string | undefined {
   const stderr = typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string"
@@ -73,6 +74,18 @@ export class UpdateService {
   private async git(args: string[]): Promise<string> {
     const result = await execFileAsync("git", args, { cwd: this.config.projectRoot ?? process.cwd(), timeout: 120_000, windowsHide: true });
     return result.stdout.trim();
+  }
+
+  private async npm(args: string[]): Promise<void> {
+    const cwd = this.config.projectRoot ?? process.cwd();
+    const timeout = 30 * 60_000;
+    if (process.platform === "win32") {
+      // npm.cmd is a Windows command script, not a native executable. Node's execFile
+      // can report `spawn EINVAL` for it because execFile does not use a shell.
+      await execAsync(["npm.cmd", ...args].join(" "), { cwd, timeout, windowsHide: true });
+      return;
+    }
+    await execFileAsync("npm", args, { cwd, timeout, windowsHide: true });
   }
 
   private async currentVersion(): Promise<string> {
@@ -190,10 +203,8 @@ export class UpdateService {
     try {
       if (!/^[A-Za-z0-9._/-]+$/.test(this.config.updateBranch) || this.config.updateBranch.startsWith("-")) throw new AppError("UPDATE_FAILED", "Invalid update branch configuration", 500);
       await this.git(["pull", "--ff-only", "origin", this.config.updateBranch]);
-      const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-      const cwd = this.config.projectRoot ?? process.cwd();
-      await execFileAsync(npm, ["install"], { cwd, timeout: 30 * 60_000, windowsHide: true });
-      await execFileAsync(npm, ["run", "build"], { cwd, timeout: 30 * 60_000, windowsHide: true });
+      await this.npm(["install"]);
+      await this.npm(["run", "build"]);
       status.currentVersion = await this.currentVersion();
       status.buildVersion = await this.currentBuildVersion();
       if (!this.commitsMatch(status.currentVersion, status.buildVersion)) {

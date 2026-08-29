@@ -244,14 +244,15 @@ UPDATE_BRANCH=master
 
 En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y solicita a WinSW su comando de auto-reinicio (`LocalAIRemote.exe restart!`). El build genera `apps\web\dist\build-meta.json`; la UI sólo recarga después de confirmar una nueva instancia del proceso y que el proceso, el build y el commit esperado coinciden. Durante ese reinicio puede cortarse la petición HTTP: la interfaz lo tratará como una petición aceptada y esperará la confirmación. No se aceptan comandos arbitrarios desde el navegador.
 
-Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\local-ai-remote\logs`. Para recuperar manualmente desde PowerShell como administrador:
+Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. El error `spawn EINVAL` en Windows corresponde a instalaciones anteriores que intentaban ejecutar `npm.cmd` como si fuera un ejecutable nativo; el código actual lo ejecuta mediante el shell compatible. Si el servidor todavía está en una de esas versiones, hay que hacer esta primera actualización manual. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\local-ai-remote\logs`. Para recuperar manualmente desde PowerShell como administrador:
 
 ```powershell
+Stop-Service -Name LocalAIRemote
 cd C:\Apps\local-ai-remote
 git pull --ff-only origin master
 npm install
 npm run build
-Restart-Service -Name LocalAIRemote
+Start-Service -Name LocalAIRemote
 Invoke-WebRequest http://localhost:3000/api/version
 ```
 
