@@ -211,7 +211,7 @@ Get-Service -Name LocalAIRemote
 También puedes comprobar la aplicación:
 
 ```powershell
-Invoke-WebRequest http://localhost:3000/api/health
+Invoke-WebRequest -UseBasicParsing http://localhost:3000/api/health
 ```
 
 El servicio ejecuta:
@@ -253,7 +253,7 @@ git pull --ff-only origin master
 npm install --include=dev
 npm run build
 Start-Service -Name LocalAIRemote
-Invoke-WebRequest http://localhost:3000/api/version
+Invoke-WebRequest -UseBasicParsing http://localhost:3000/api/version
 ```
 
 El repositorio debe tener el remoto Git configurado y la cuenta que ejecuta WinSW debe poder leerlo. Usa esta función sólo dentro de Tailscale; no publiques el puerto en Internet.
