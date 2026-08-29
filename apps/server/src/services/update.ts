@@ -1,5 +1,6 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -7,6 +8,21 @@ import type { AppConfig } from "../config";
 import { AppError } from "../errors";
 
 const execFileAsync = promisify(execFile);
+
+function updateErrorDetail(error: unknown): string | undefined {
+  const stderr = typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string"
+    ? error.stderr
+    : undefined;
+  const raw = stderr?.trim() || (error instanceof Error ? error.message.trim() : "");
+  if (!raw) return undefined;
+
+  // Update commands never receive credentials as arguments, but keep diagnostics safe if a tool echoes environment values.
+  return raw
+    .replace(/\b(token|password|authorization|api[_ -]?key)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+    .replace(/\s+/g, " ")
+    .slice(0, 500);
+}
+
 export interface UpdateStatus {
   enabled: boolean;
   state: "idle" | "checking" | "available" | "updating" | "restart-required" | "failed" | "unavailable";
@@ -34,6 +50,7 @@ export interface ServerVersion {
 export class UpdateService {
   private readonly config: AppConfig;
   private running = false;
+  private restartScheduled = false;
   private readonly startedAt = new Date().toISOString();
   private readonly buildMetadataPath: string;
   private readonly runningCommit: string;
@@ -99,9 +116,31 @@ export class UpdateService {
 
   private requestRestart(): void {
     if (this.config.nodeEnv !== "production") return;
-    // WinSW's onfailure policy restarts the process only after a non-zero exit.
-    // Delay long enough for the HTTP response to reach the client first.
-    const timer = setTimeout(() => process.exit(75), 1_000);
+
+    this.restartScheduled = true;
+    const winSwPath = path.join(this.config.projectRoot, "scripts", "windows", "LocalAIRemote.exe");
+    if (process.platform === "win32" && existsSync(winSwPath)) {
+      try {
+        // WinSW's self-restart command creates a separate process group so it survives
+        // the service stop that terminates this Node process.
+        const child = spawn(winSwPath, ["restart!"], {
+          cwd: path.dirname(winSwPath),
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        child.once("error", () => {
+          // The exit fallback below lets WinSW's onfailure policy recover the service.
+        });
+        child.unref();
+      } catch {
+        // The non-zero exit fallback below lets WinSW's configured failure policy recover the service.
+      }
+    }
+
+    // Keep a wrapper-independent fallback. Delay long enough for the JSON response to be flushed;
+    // on Windows it also covers a WinSW command that could not be started.
+    const timer = setTimeout(() => process.exit(75), 2_000);
     timer.unref();
   }
 
@@ -144,6 +183,7 @@ export class UpdateService {
   }
 
   async update(): Promise<UpdateStatus> {
+    if (this.restartScheduled) throw new AppError("UPDATE_IN_PROGRESS", "The service is restarting; wait for it to come back online", 409);
     if (this.running) throw new AppError("UPDATE_IN_PROGRESS", "An update is already running", 409);
     this.running = true;
     const status = this.base("updating");
@@ -164,7 +204,10 @@ export class UpdateService {
       this.requestRestart();
     } catch (error) {
       status.state = "failed";
-      status.message = error instanceof AppError ? error.message : "Update failed; the previous build is still running";
+      const detail = updateErrorDetail(error);
+      status.message = error instanceof AppError
+        ? error.message
+        : detail ? `Update failed: ${detail}` : "Update failed. Check the service and update logs for details.";
       throw new AppError("UPDATE_FAILED", status.message, 502);
     } finally {
       this.running = false;
@@ -173,6 +216,7 @@ export class UpdateService {
   }
 
   async restart(): Promise<UpdateStatus> {
+    if (this.restartScheduled) throw new AppError("UPDATE_IN_PROGRESS", "The service is restarting; wait for it to come back online", 409);
     if (this.running) throw new AppError("UPDATE_IN_PROGRESS", "An update or restart is already running", 409);
     this.running = true;
     const status = this.base("restart-required");

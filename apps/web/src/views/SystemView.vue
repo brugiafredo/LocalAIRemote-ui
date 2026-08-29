@@ -29,6 +29,10 @@ const updateReloadDelayMs = 5_000;
 let timer: number | undefined;
 let updateTimer: number | undefined;
 
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 async function refresh(): Promise<void> {
   try {
     info.value = await api.system();
@@ -56,20 +60,23 @@ function versionsMatch(left: string | undefined, right: string | undefined): boo
   return left === right || left.startsWith(right) || right.startsWith(left);
 }
 async function waitForUpdatedServer(expectedBuild?: string, previousStartedAt?: string): Promise<boolean> {
-  await new Promise<void>((resolve) => window.setTimeout(resolve, updateReloadDelayMs));
+  await sleep(updateReloadDelayMs);
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       const [health, version] = await Promise.all([api.health(), api.version()]);
+      serverVersion.value = version;
       const serverRestarted = !previousStartedAt || version.startedAt !== previousStartedAt;
       const buildReady = !expectedBuild || versionsMatch(version.buildCommit, expectedBuild);
       const processReady = versionsMatch(version.runningCommit, version.buildCommit);
       if (health.status === "ok" && serverRestarted && buildReady && processReady) return true;
-    } catch {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
-    }
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
+    } catch { /* The service is expected to be unreachable while WinSW restarts it. */ }
+    if (attempt < 9) await sleep(1_000);
   }
   return false;
+}
+
+function isExpectedRestartDisconnect(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "SERVER_OFFLINE";
 }
 function forceReload(): void {
   const url = new URL(window.location.href);
@@ -81,14 +88,25 @@ async function installUpdate(): Promise<void> {
   updateBusy.value = true;
   try {
     const previous = await api.version().catch(() => null);
-    update.value = await api.triggerUpdate(updateToken.value || undefined);
-    ui.showToast("Update installed. Reloading in 5 seconds…", "success");
-    const ready = await waitForUpdatedServer(update.value.buildVersion || update.value.currentVersion, previous?.startedAt);
+    let expectedBuild: string | undefined;
+    try {
+      update.value = await api.triggerUpdate(updateToken.value || undefined);
+      expectedBuild = update.value.buildVersion || update.value.currentVersion;
+      ui.showToast("Update installed. Waiting for the service confirmation…", "success");
+    } catch (error) {
+      if (!isExpectedRestartDisconnect(error)) throw error;
+      ui.showToast("The service disconnected while restarting. Waiting for confirmation…", "info");
+    }
+    const ready = await waitForUpdatedServer(expectedBuild, previous?.startedAt);
     if (ready) {
+      await refreshUpdate();
       await updateServiceWorker(false);
       forceReload();
     }
-    else ui.showToast("The update was built, but the restarted service could not be confirmed. Check System again.", "error");
+    else {
+      await refreshUpdate();
+      ui.showToast("The update request was received, but a new running service could not be confirmed. Check the Windows service logs.", "error");
+    }
   }
   catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to install update", "error"); }
   finally { updateBusy.value = false; }
@@ -99,14 +117,22 @@ async function restartService(): Promise<void> {
   localStorage.setItem("local-ai-update-token", updateToken.value);
   try {
     const previous = await api.version().catch(() => null);
-    await api.restartService(updateToken.value || undefined);
-    ui.showToast("Service restart requested. Reloading in 5 seconds…", "success");
+    try {
+      await api.restartService(updateToken.value || undefined);
+      ui.showToast("Service restart requested. Waiting for confirmation…", "success");
+    } catch (error) {
+      if (!isExpectedRestartDisconnect(error)) throw error;
+      ui.showToast("The service disconnected while restarting. Waiting for confirmation…", "info");
+    }
     const ready = await waitForUpdatedServer(undefined, previous?.startedAt);
     if (ready) {
+      await refreshUpdate();
       await updateServiceWorker(false);
       forceReload();
+    } else {
+      await refreshUpdate();
+      ui.showToast("The service did not return with a new start time. Check its Windows service logs.", "error");
     }
-    else ui.showToast("The service did not return with a new start time. Check its Windows service logs.", "error");
   } catch (error) {
     ui.showToast(error instanceof ApiError ? error.message : "Unable to restart the service", "error");
   } finally {

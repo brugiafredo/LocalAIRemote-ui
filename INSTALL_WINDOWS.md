@@ -242,9 +242,18 @@ UPDATE_TOKEN=un-token-largo-y-aleatorio
 UPDATE_BRANCH=master
 ```
 
-En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y solicita a WinSW el reinicio del proceso. El build genera `apps\web\dist\build-meta.json`; el servidor compara ese commit con el source y la UI sólo recarga después de confirmar que el servicio volvió con un nuevo `startedAt` y que el build coincide. No se aceptan comandos arbitrarios desde el navegador.
+En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y solicita a WinSW su comando de auto-reinicio (`LocalAIRemote.exe restart!`). El build genera `apps\web\dist\build-meta.json`; la UI sólo recarga después de confirmar una nueva instancia del proceso y que el proceso, el build y el commit esperado coinciden. Durante ese reinicio puede cortarse la petición HTTP: la interfaz lo tratará como una petición aceptada y esperará la confirmación. No se aceptan comandos arbitrarios desde el navegador.
 
-Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\local-ai-remote\logs`.
+Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\local-ai-remote\logs`. Para recuperar manualmente desde PowerShell como administrador:
+
+```powershell
+cd C:\Apps\local-ai-remote
+git pull --ff-only origin master
+npm install
+npm run build
+Restart-Service -Name LocalAIRemote
+Invoke-WebRequest http://localhost:3000/api/version
+```
 
 El repositorio debe tener el remoto Git configurado y la cuenta que ejecuta WinSW debe poder leerlo. Usa esta función sólo dentro de Tailscale; no publiques el puerto en Internet.
 
