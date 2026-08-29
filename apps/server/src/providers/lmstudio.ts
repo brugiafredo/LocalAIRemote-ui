@@ -67,7 +67,8 @@ export function normalizeLMStudioModels(payload: unknown): InternalModel[] {
     if (!isRecord(item)) {
       return [];
     }
-    const id = stringValue(item.id) ?? stringValue(item.model_key) ?? stringValue(item.model);
+    // LM Studio v1 calls the stable model identifier `key`; older versions used id/model_key.
+    const id = stringValue(item.key) ?? stringValue(item.id) ?? stringValue(item.model_key) ?? stringValue(item.model);
     if (!id) {
       return [];
     }
@@ -285,6 +286,14 @@ export class LMStudioProvider implements AIProvider {
       body: JSON.stringify({ instance_id: loaded.instanceId }),
     }, 120_000);
     await readJson(response);
+  }
+
+  async downloadModel(_model: string): Promise<void> {
+    throw new AppError("MODEL_ACTION_UNSUPPORTED", "LM Studio model downloads are managed by the LM Studio application", 405);
+  }
+
+  async deleteModel(_model: string): Promise<void> {
+    throw new AppError("MODEL_ACTION_UNSUPPORTED", "LM Studio model deletion is managed by the LM Studio application", 405);
   }
 
   async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {

@@ -6,6 +6,12 @@ export type ErrorCode =
   | "MODEL_NOT_LOADED"
   | "PROVIDER_ERROR"
   | "SYSTEM_INFO_UNAVAILABLE"
+  | "MODEL_ACTION_UNSUPPORTED"
+  | "AUTH_REQUIRED"
+  | "INVALID_CREDENTIALS"
+  | "UPDATE_DISABLED"
+  | "UPDATE_IN_PROGRESS"
+  | "UPDATE_FAILED"
   | "INTERNAL_ERROR";
 
 export class AppError extends Error {

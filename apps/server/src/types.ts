@@ -7,6 +7,7 @@ export interface ModelInfo {
   loaded: boolean;
   contextLength?: number;
   size?: number;
+  deletable?: boolean;
 }
 
 export interface ProviderStatus {
@@ -44,7 +45,24 @@ export interface AIProvider {
   listLoadedModels(): Promise<ModelInfo[]>;
   loadModel(model: string, contextLength?: number): Promise<void>;
   unloadModel(model: string): Promise<void>;
+  downloadModel?(model: string): Promise<void>;
+  deleteModel?(model: string): Promise<void>;
   chat(request: ChatRequest): AsyncIterable<ChatChunk>;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  provider: ProviderId;
+  model: string;
+  messages: ChatMessage[];
+  systemPrompt: string;
+  parameters: { temperature: number; maxTokens: number; contextLength: number };
+  createdAt: string;
+  updatedAt: string;
+  ownerId?: string;
+  visibility?: "private" | "shared";
+  sharedWith?: string[];
 }
 
 export interface SystemInfo {

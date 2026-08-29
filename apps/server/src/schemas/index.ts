@@ -22,3 +22,24 @@ export const ChatRequestSchema = z.object({
   maxTokens: z.number().int().positive().max(1_000_000).optional(),
   contextLength: z.number().int().positive().max(1_000_000).optional(),
 });
+
+export const AuthLoginSchema = z.object({ password: z.string().min(1).max(500) });
+export const ConversationSchema = z.object({
+  id: z.string().min(1).max(200),
+  title: z.string().max(200),
+  provider: ProviderIdSchema,
+  model: z.string().max(500),
+  messages: z.array(ChatMessageSchema).max(500),
+  systemPrompt: z.string().max(50_000),
+  parameters: z.object({
+    temperature: z.number().min(0).max(2),
+    maxTokens: z.number().int().positive().max(1_000_000),
+    contextLength: z.number().int().positive().max(1_000_000),
+  }),
+  createdAt: z.string().max(100),
+  updatedAt: z.string().max(100),
+  ownerId: z.string().max(200).optional(),
+  visibility: z.enum(["private", "shared"]).optional(),
+  sharedWith: z.array(z.string().max(200)).max(100).optional(),
+});
+export const UpdateTokenSchema = z.object({ token: z.string().max(500).optional() });

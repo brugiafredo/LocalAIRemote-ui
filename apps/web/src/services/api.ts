@@ -1,4 +1,4 @@
-import type { ApiErrorShape, ChatRequest, ChatStreamChunk, ModelInfo, ProviderStatus, SystemInfo } from "../types";
+import type { ApiErrorShape, AuthStatus, ChatRequest, ChatStreamChunk, Conversation, ModelInfo, ProviderStatus, SystemInfo, UpdateStatus } from "../types";
 
 const apiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
@@ -17,11 +17,11 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${apiBase}${path}`, { ...init, headers: { accept: "application/json", ...(init?.headers ?? {}) } });
+    response = await fetch(`${apiBase}${path}`, { credentials: "include", ...init, headers: { accept: "application/json", ...(init?.headers ?? {}) } });
   } catch {
     throw new ApiError("The Local AI server is unreachable", "SERVER_OFFLINE", 503);
   }
-  const payload: unknown = await response.json().catch(() => undefined);
+  const payload: unknown = response.status === 204 ? undefined : await response.json().catch(() => undefined);
   if (!response.ok) {
     const error = payload as Partial<ApiErrorShape> | undefined;
     throw new ApiError(error?.message || "The request failed", error?.code || "REQUEST_FAILED", response.status);
@@ -43,12 +43,51 @@ export const api = {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ provider, model }),
   }),
+  downloadModel: (provider: "ollama", model: string) => request<{ ok: true; model?: string }>("/api/models/download", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ provider, model }),
+  }),
+  deleteModel: (provider: "ollama", model: string) => request<{ ok: true }>("/api/models/delete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ provider, model }),
+  }),
+  authStatus: () => request<AuthStatus>("/api/auth/status"),
+  login: (password: string) => request<AuthStatus>("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  }),
+  logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+  conversations: async () => {
+    const payload = await request<Conversation[] | { conversations?: Conversation[] }>("/api/conversations");
+    return Array.isArray(payload) ? payload : (payload.conversations ?? []);
+  },
+  saveConversation: (conversation: Conversation) => request<Conversation>("/api/conversations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(conversation),
+  }),
+  deleteConversation: (id: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  updateStatus: () => request<UpdateStatus>("/api/update/status"),
+  checkForUpdate: (token?: string) => request<UpdateStatus>("/api/update/check", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    ...(token ? { body: JSON.stringify({ token }) } : { body: JSON.stringify({}) }),
+  }),
+  triggerUpdate: (token?: string) => request<UpdateStatus>("/api/update", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    ...(token ? { body: JSON.stringify({ token }) } : { body: JSON.stringify({}) }),
+  }),
   system: () => request<SystemInfo>("/api/system"),
   async *chat(input: ChatRequest): AsyncIterable<ChatStreamChunk> {
     let response: Response;
     try {
       response = await fetch(`${apiBase}/api/chat`, {
         method: "POST",
+        credentials: "include",
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         body: JSON.stringify(input),
       });

@@ -2,12 +2,16 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { api, ApiError } from "../services/api";
 import { useUiStore } from "../stores/ui";
-import type { SystemInfo } from "../types";
+import type { SystemInfo, UpdateStatus } from "../types";
 
 const ui = useUiStore();
 const info = ref<SystemInfo | null>(null);
 const loading = ref(true);
+const update = ref<UpdateStatus | null>(null);
+const updateBusy = ref(false);
+const updateToken = ref(localStorage.getItem("local-ai-update-token") || "");
 let timer: number | undefined;
+let updateTimer: number | undefined;
 
 async function refresh(): Promise<void> {
   try {
@@ -18,8 +22,26 @@ async function refresh(): Promise<void> {
     loading.value = false;
   }
 }
+async function refreshUpdate(): Promise<void> {
+  try { update.value = await api.updateStatus(); } catch { update.value = null; }
+}
+async function checkForUpdate(): Promise<void> {
+  updateBusy.value = true;
+  localStorage.setItem("local-ai-update-token", updateToken.value);
+  try { update.value = await api.checkForUpdate(updateToken.value || undefined); }
+  catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to check for updates", "error"); }
+  finally { updateBusy.value = false; }
+}
+async function installUpdate(): Promise<void> {
+  if (!window.confirm("Pull the latest code, rebuild the app, and restart the service?")) return;
+  updateBusy.value = true;
+  try { update.value = await api.triggerUpdate(updateToken.value || undefined); }
+  catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to install update", "error"); }
+  finally { updateBusy.value = false; }
+}
 onMounted(async () => { await refresh(); timer = window.setInterval(() => void refresh(), 5_000); });
-onUnmounted(() => { if (timer !== undefined) window.clearInterval(timer); });
+onMounted(() => { void refreshUpdate(); updateTimer = window.setInterval(() => void refreshUpdate(), 60_000); });
+onUnmounted(() => { if (timer !== undefined) window.clearInterval(timer); if (updateTimer !== undefined) window.clearInterval(updateTimer); });
 function formatBytes(bytes: number | null): string {
   if (bytes === null) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -46,6 +68,7 @@ function formatUptime(seconds: number | null): string {
       </div>
       <section class="system-section"><div class="section-heading-row"><div><h2 class="section-heading">Graphics</h2><p class="text-xs text-muted">Detected adapters and reported memory.</p></div></div><div v-if="info.gpu.length" class="gpu-grid"><article v-for="gpu in info.gpu" :key="gpu.name" class="gpu-card"><div class="gpu-icon" aria-hidden="true">▰</div><div class="min-w-0"><h3 class="truncate font-semibold" :title="gpu.name">{{ gpu.name }}</h3><p class="mt-1 text-xs text-muted">{{ formatBytes(gpu.memoryUsedBytes) }} used · {{ formatBytes(gpu.memoryTotalBytes) }} total</p></div></article></div><div v-else class="empty-provider"><span aria-hidden="true">◌</span><div><p>No graphics adapter data reported</p><span>The operating system did not expose GPU telemetry.</span></div></div></section>
       <section class="system-section"><div class="section-heading-row"><div><h2 class="section-heading">Host</h2><p class="text-xs text-muted">Environment details for this Local AI server.</p></div></div><div class="host-card"><div><span class="metric-label">Operating system</span><p class="mt-2 font-medium">{{ info.operatingSystem }}</p></div><div><span class="metric-label">Last updated</span><p class="mt-2 font-medium">{{ new Date(info.capturedAt).toLocaleTimeString() }}</p></div></div></section>
+      <section class="system-section update-section"><div class="section-heading-row"><div><h2 class="section-heading">Remote updates</h2><p class="text-xs text-muted">Safely pull, build, and restart this service from the UI when enabled in .env.</p></div></div><article class="update-card"><div class="flex min-w-0 items-start justify-between gap-4"><div><p class="metric-label">Status</p><p class="mt-2 font-medium">{{ update?.message || 'Checking update configuration…' }}</p><p v-if="update?.currentVersion" class="mt-1 text-xs text-muted">Current: {{ update.currentVersion }}<span v-if="update.latestVersion"> · Remote: {{ update.latestVersion }}</span></p></div><span v-if="update" class="status-pill" :class="update.state === 'available' ? 'status-online' : 'status-offline'">{{ update.state }}</span></div><div v-if="update?.enabled && update.requiresToken" class="mt-4"><label class="field-label">Update token <input v-model="updateToken" type="password" autocomplete="off" placeholder="Configured in UPDATE_TOKEN" /></label></div><div class="mt-4 flex flex-wrap gap-2"><button class="secondary-button" :disabled="updateBusy || !update?.enabled" @click="checkForUpdate">{{ updateBusy ? 'Checking…' : 'Check now' }}</button><button v-if="update?.state === 'available'" class="primary-button" :disabled="updateBusy" @click="installUpdate">Install and restart</button></div></article></section>
     </template>
   </section>
 </template>

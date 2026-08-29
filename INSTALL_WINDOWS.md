@@ -92,9 +92,22 @@ LM_STUDIO_URL=http://127.0.0.1:1234
 OLLAMA_URL=http://127.0.0.1:11434
 APP_NAME=Local AI
 NODE_ENV=production
+DATA_DIR=./data
+AUTH_ENABLED=false
+UPDATE_ENABLED=false
+UPDATE_BRANCH=master
 ```
 
 El archivo `.env` no se sube a Git. Sólo `.env.example` se versiona.
+
+Para activar la autenticación opcional, cambia estos valores antes de iniciar el servicio:
+
+```env
+AUTH_ENABLED=true
+AUTH_PASSWORD=una-contraseña-larga
+```
+
+Con `AUTH_ENABLED=false`, el usuario local es común para todos los dispositivos y no se solicita login.
 
 ## 5. Comprobar el proyecto antes del servicio
 
@@ -156,6 +169,10 @@ http://127.0.0.1:11434
 
 La aplicación continuará funcionando si uno de los dos proveedores está apagado.
 
+En **Models → Ollama** puedes escribir cualquier nombre de modelo de la biblioteca (por ejemplo `llama3.2` o `qwen2.5:7b`) y pulsar **Download model**. Las tarjetas de Ollama también permiten **Delete from Ollama**, con confirmación, para eliminar los archivos locales.
+
+LM Studio continúa gestionando sus descargas y eliminaciones desde su propia aplicación. La interfaz remota sí descubre sus modelos, permite cargarlos/descargarlos de memoria y deja chatear con un modelo disponible aunque todavía no esté cargado: LM Studio puede cargarlo automáticamente en el primer mensaje.
+
 ## 8. Instalar Local AI Remote como servicio Windows
 
 Abre **PowerShell como Administrador** y ejecuta:
@@ -201,7 +218,27 @@ Si el servicio no inicia, comprueba que `node` esté disponible en el `PATH` de 
 C:\Apps\local-ai-remote\logs
 ```
 
-## 9. Acceder desde otra PC o iPhone con Tailscale
+## 9. Historial compartido entre dispositivos
+
+Las conversaciones se guardan en `C:\Apps\local-ai-remote\data\conversations.json` y además se mantienen en una caché local del navegador. Al abrir la aplicación en otro dispositivo, el historial del servidor se sincroniza. Las conversaciones que ya existían sólo en un navegador se migran cuando el servidor todavía está vacío.
+
+Cada registro incluye `ownerId`, `visibility` y `sharedWith` para preparar futuros usuarios y compartir conversaciones. En el uso actual de un solo usuario, `visibility=shared` permite que todos tus dispositivos vean el mismo historial.
+
+## 10. Actualizar desde la interfaz
+
+La actualización remota está desactivada por defecto. Para activarla:
+
+```env
+UPDATE_ENABLED=true
+UPDATE_TOKEN=un-token-largo-y-aleatorio
+UPDATE_BRANCH=master
+```
+
+En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y reinicia el proceso para que WinSW cargue la nueva versión. No se aceptan comandos arbitrarios desde el navegador.
+
+El repositorio debe tener el remoto Git configurado y la cuenta que ejecuta WinSW debe poder leerlo. Usa esta función sólo dentro de Tailscale; no publiques el puerto en Internet.
+
+## 11. Acceder desde otra PC o iPhone con Tailscale
 
 Instala Tailscale en la PC Windows y en el dispositivo cliente. Inicia sesión en la misma red de Tailscale.
 
@@ -223,7 +260,7 @@ Ejemplo:
 http://100.106.130.118:3000
 ```
 
-## 10. Firewall de Windows
+## 12. Firewall de Windows
 
 Si Tailscale no puede conectarse, abre PowerShell como Administrador y permite el puerto 3000:
 
@@ -239,7 +276,7 @@ New-NetFirewallRule `
 
 El proyecto no modifica el firewall automáticamente. No abras el puerto directamente a Internet; utiliza Tailscale o una red privada.
 
-## 11. Actualizar una instalación existente
+## 13. Actualizar una instalación existente
 
 Desde PowerShell como Administrador:
 
@@ -255,7 +292,7 @@ npm run build
 
 El `.env` existente se conserva durante la actualización.
 
-## 12. Desinstalar el servicio
+## 14. Desinstalar el servicio
 
 ```powershell
 cd C:\Apps\local-ai-remote
@@ -264,7 +301,7 @@ cd C:\Apps\local-ai-remote
 
 Esto elimina el servicio, pero no borra el proyecto ni `.env`.
 
-## 13. Problemas frecuentes
+## 15. Problemas frecuentes
 
 ### `WinSW executable not found`
 
@@ -305,7 +342,7 @@ Get-Content C:\Apps\local-ai-remote\logs\* -Tail 100
 
 También verifica que Node.js esté disponible para la cuenta del servicio.
 
-## 14. Seguridad y auditoría
+## 16. Seguridad y auditoría
 
 Antes de publicar una instalación en producción, revisa:
 

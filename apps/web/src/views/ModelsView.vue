@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useAppStore } from "../stores/app";
 import type { ModelInfo, ProviderId } from "../types";
 
 const app = useAppStore();
+const ollamaModelName = ref("");
+const downloading = ref(false);
 const groups = computed(() => [
   { id: "lmstudio" as const, name: "LM Studio", description: "Local models managed by LM Studio", models: app.models.filter((model) => model.provider === "lmstudio") },
   { id: "ollama" as const, name: "Ollama", description: "Models installed in your Ollama library", models: app.models.filter((model) => model.provider === "ollama") },
@@ -15,6 +17,19 @@ function modelAction(model: ModelInfo): void {
 }
 function providerOnline(id: ProviderId): boolean {
   return app.provider(id).online;
+}
+async function downloadOllama(): Promise<void> {
+  if (!ollamaModelName.value.trim() || downloading.value) return;
+  downloading.value = true;
+  try {
+    await app.downloadOllamaModel(ollamaModelName.value);
+    ollamaModelName.value = "";
+  } finally {
+    downloading.value = false;
+  }
+}
+function deleteModel(model: ModelInfo): void {
+  if (window.confirm(`Delete ${model.name} from Ollama? This removes the local model files.`)) void app.deleteOllamaModel(model);
 }
 function formatSize(bytes?: number): string {
   if (!bytes) return "Size unavailable";
@@ -41,9 +56,14 @@ function formatSize(bytes?: number): string {
             <div class="mt-4 min-w-0"><h3 class="truncate text-base font-semibold" :title="model.name">{{ model.name }}</h3><p class="mt-1 truncate text-xs text-muted" :title="model.id">{{ model.id }}</p></div>
             <div class="mt-4 flex items-center gap-3 text-[11px] text-muted"><span v-if="model.size">{{ formatSize(model.size) }}</span><span v-if="model.contextLength">{{ model.contextLength.toLocaleString() }} ctx</span><span v-if="!model.size && !model.contextLength">Discovered from provider</span></div>
             <button class="action-button mt-5 w-full" :class="model.loaded ? 'unload' : 'load'" :disabled="app.isBusy(model) || !providerOnline(model.provider)" @click="modelAction(model)"><span v-if="app.isBusy(model)" class="spin" aria-hidden="true">◌</span><span v-else aria-hidden="true">{{ model.loaded ? '↓' : '↑' }}</span>{{ app.isBusy(model) ? (model.loaded ? 'Unloading…' : 'Loading…') : (model.loaded ? 'Unload model' : 'Load model') }}</button>
+            <button v-if="model.provider === 'ollama'" class="text-button mt-3 w-full text-center" :disabled="app.isBusy(model) || !providerOnline(model.provider)" @click="deleteModel(model)">{{ app.isBusy(model) && app.actionOperation === 'delete' ? 'Deleting…' : 'Delete from Ollama' }}</button>
           </article>
         </div>
         <div v-else class="empty-provider"><span aria-hidden="true">◌</span><div><p>{{ providerOnline(group.id) ? 'No models discovered yet' : `${group.name} is offline` }}</p><span>{{ providerOnline(group.id) ? 'Refresh to check for newly available models.' : 'Start the provider or update its URL in .env.' }}</span></div></div>
+        <form v-if="group.id === 'ollama'" class="download-card" @submit.prevent="downloadOllama">
+          <div><p class="font-semibold">Add an Ollama model</p><p class="mt-1 text-xs text-muted">Enter any model name from the Ollama library, for example <code>llama3.2</code> or <code>qwen2.5:7b</code>.</p></div>
+          <div class="download-row"><label class="sr-only" for="ollama-model-name">Ollama model name</label><input id="ollama-model-name" v-model="ollamaModelName" class="model-input" placeholder="model:tag" :disabled="!providerOnline('ollama') || downloading" /><button class="primary-button" type="submit" :disabled="!providerOnline('ollama') || downloading || !ollamaModelName.trim()">{{ downloading ? 'Downloading…' : 'Download model' }}</button></div>
+        </form>
       </section>
     </div>
   </section>

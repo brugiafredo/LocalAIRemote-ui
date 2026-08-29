@@ -4,16 +4,19 @@ import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { useAppStore } from "../stores/app";
 import { useConversationStore } from "../stores/conversations";
 import { useUiStore } from "../stores/ui";
+import { useAuthStore } from "../stores/auth";
 import ToastHost from "./ToastHost.vue";
 
 const app = useAppStore();
 const conversations = useConversationStore();
 const ui = useUiStore();
+const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 let refreshTimer: number | undefined;
 
 onMounted(async () => {
+  await conversations.hydrateRemote();
   await app.refresh();
   refreshTimer = window.setInterval(() => void app.refresh(), 15_000);
 });
@@ -96,6 +99,7 @@ function removeConversation(id: string): void {
             <span class="ml-auto text-[10px] text-muted">{{ provider.online ? 'Online' : 'Offline' }}</span>
           </div>
         </div>
+        <button v-if="auth.enabled" class="text-button mt-3 w-full text-left" @click="auth.logout">Sign out</button>
       </div>
     </aside>
 

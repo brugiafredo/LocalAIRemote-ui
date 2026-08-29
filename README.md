@@ -20,7 +20,7 @@ npm run build
 npm run start
 ```
 
-For a manual launch, copy `.env.example` to `.env` once and adjust the provider URLs if needed. The `.env` file contains machine-specific configuration and is ignored by Git.
+For a manual launch, copy `.env.example` to `.env` once and adjust the provider URLs if needed. The Windows service installer creates `.env` automatically when it is missing and never overwrites an existing file. The `.env` file contains machine-specific configuration and is ignored by Git.
 
 Open [http://localhost:3000](http://localhost:3000). Production uses one Fastify port for both `/api/*` and the compiled Vue SPA.
 
@@ -99,8 +99,12 @@ To remove the service without deleting the project:
 - LM Studio uses native `/api/v1/models`, `/api/v1/models/load`, `/api/v1/models/unload`, and `/api/v1/chat` named SSE. `/api/v0/models` is used only when the v1 model listing is unavailable with HTTP 404.
 - Ollama uses `/api/tags`, `/api/ps`, and `/api/chat`. Loading keeps a model alive with `keep_alive: -1`; unloading sends `keep_alive: 0`.
 - `/api/models` combines whichever providers respond. Offline providers do not prevent the remaining provider from being used.
+- LM Studio models are identified using the current v1 `key` field. An unloaded LM Studio model can be sent a first chat request and LM Studio can auto-load it; Ollama models still use explicit keep-alive load/unload actions.
+- Ollama model downloads and deletion are available from the Models page. LM Studio downloads and deletion remain managed by the LM Studio application.
+- Conversations are persisted server-side in `data/conversations.json` and mirrored to browser localStorage. Optional in-memory-session password authentication is controlled by `AUTH_ENABLED` and `AUTH_PASSWORD`.
+- Remote updates are opt-in (`UPDATE_ENABLED=false` by default). The System page can run a fixed fast-forward-only pull, install, build, and service restart; arbitrary shell commands are never accepted.
 - All API errors use `{ error: true, code, message }` and production responses do not expose stack traces.
 
 ## MVP scope
 
-Conversations, system prompts, and basic generation parameters are stored in browser `localStorage`. The PWA can be installed from a supported browser. Authentication, databases, model downloads, process control, RAG, agents, and multi-user features are intentionally outside this MVP.
+Conversations, system prompts, and basic generation parameters are stored on the server and mirrored in browser `localStorage`. The PWA can be installed from a supported browser. Optional simple authentication, future sharing metadata, Ollama model management, and opt-in remote updates are included; databases, process control, RAG, agents, and public tunnels remain out of scope.

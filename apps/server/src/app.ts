@@ -7,17 +7,23 @@ import type { AppConfig } from "./config";
 import { registerApiRoutes } from "./routes/api";
 import { ProviderRegistry } from "./providers/registry";
 import { SystemService } from "./services/system";
+import { AuthService } from "./services/auth";
+import { ConversationStore } from "./services/conversations";
+import { UpdateService } from "./services/update";
 
 export async function buildApp(
   config: AppConfig,
   registry: ProviderRegistry,
   systemService = new SystemService(),
+  auth = new AuthService(config),
+  conversations = new ConversationStore(config.dataDir ?? path.resolve(process.cwd(), "data")),
+  updates = new UpdateService(config),
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: config.nodeEnv === "development" });
   await app.register(cors, {
     origin: config.corsOrigins,
   });
-  registerApiRoutes(app, registry, systemService);
+  registerApiRoutes(app, registry, systemService, auth, conversations, updates);
 
   const webDistCandidates = [
     path.resolve(process.cwd(), "apps/web/dist"),

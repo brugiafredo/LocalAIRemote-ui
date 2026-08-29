@@ -25,6 +25,7 @@ const selectedModel = computed(() => {
 const statusMessage = computed(() => {
   if (!selectedModel.value) return "Choose a model to begin";
   if (!app.provider(selectedModel.value.provider).online) return `${selectedModel.value.name} · provider offline`;
+  if (!selectedModel.value.loaded && selectedModel.value.provider === "lmstudio") return `${selectedModel.value.name} · auto-loads on first message`;
   if (!selectedModel.value.loaded) return `${selectedModel.value.name} · load before chatting`;
   return `${selectedModel.value.name} · ready`;
 });
@@ -54,7 +55,7 @@ async function sendMessage(content: string): Promise<void> {
     ui.showToast("Select a model first", "info");
     return;
   }
-  if (!model.loaded) {
+  if (!model.loaded && model.provider !== "lmstudio") {
     ui.showToast("Load this model before starting a chat", "info");
     return;
   }
@@ -113,14 +114,14 @@ async function sendMessage(content: string): Promise<void> {
         <div v-if="!conversation || conversation.messages.length === 0" class="empty-chat">
           <div class="empty-orb" aria-hidden="true">✦</div>
           <h2>Start a local conversation</h2>
-          <p>Choose a loaded model, then ask anything. Responses stream directly from your local provider.</p>
+          <p>Choose a model, then ask anything. Responses stream directly from your local provider.</p>
         </div>
         <MessageBubble v-for="(message, index) in conversation?.messages" :key="`${conversation?.id}-${index}`" :message="message" :streaming="streaming && index === (conversation?.messages.length ?? 0) - 1" />
       </div>
       <div class="chat-bottom">
-        <div v-if="selectedModel && !selectedModel.loaded" class="inline-alert"><span aria-hidden="true">⌁</span><span class="flex-1">Load <strong>{{ selectedModel.name }}</strong> before chatting.</span><button class="text-button" :disabled="app.isBusy(selectedModel)" @click="loadSelectedModel">{{ app.isBusy(selectedModel) ? 'Loading…' : 'Load now' }}</button></div>
+        <div v-if="selectedModel && !selectedModel.loaded" class="inline-alert"><span aria-hidden="true">⌁</span><span class="flex-1">{{ selectedModel.provider === 'lmstudio' ? 'LM Studio will load this model automatically when you send the first message.' : `Load ${selectedModel.name} before chatting.` }}</span><button v-if="selectedModel.provider !== 'lmstudio'" class="text-button" :disabled="app.isBusy(selectedModel)" @click="loadSelectedModel">{{ app.isBusy(selectedModel) ? 'Loading…' : 'Load now' }}</button></div>
         <ConversationSettings v-if="conversation" :conversation="conversation" @update="updateSettings" />
-        <ChatComposer :disabled="loading || !selectedModel?.loaded" @send="sendMessage" />
+        <ChatComposer :disabled="loading || !selectedModel || !app.provider(selectedModel.provider).online || (selectedModel.provider === 'ollama' && !selectedModel.loaded)" @send="sendMessage" />
         <p class="privacy-note">Your prompts stay between this browser and the local server.</p>
       </div>
     </div>

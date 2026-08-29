@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+import { api } from "../services/api";
 import type { ChatMessage, Conversation, ConversationParameters, ProviderId } from "../types";
+import { useUiStore } from "./ui";
 
 const storageKey = "local-ai-conversations";
 const defaultParameters: ConversationParameters = { temperature: 0.7, maxTokens: 1024, contextLength: 4096 };
@@ -58,10 +60,50 @@ function readStored(): Conversation[] {
 export const useConversationStore = defineStore("conversations", () => {
   const conversations = ref<Conversation[]>(readStored());
   const activeId = ref<string | null>(conversations.value[0]?.id ?? null);
+  const remoteReady = ref(false);
+  let syncTimer: ReturnType<typeof setTimeout> | undefined;
   const activeConversation = computed(() => conversations.value.find((conversation) => conversation.id === activeId.value) ?? null);
 
   function persist(): void {
     localStorage.setItem(storageKey, JSON.stringify(conversations.value));
+    if (remoteReady.value) scheduleSync();
+  }
+  function scheduleSync(): void {
+    if (syncTimer !== undefined) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      syncTimer = undefined;
+      void syncRemote();
+    }, 350);
+  }
+  async function syncRemote(): Promise<void> {
+    if (!remoteReady.value) return;
+    try {
+      // The JSON store is intentionally simple and serial; avoid concurrent writes
+      // replacing one another when several conversations are synced together.
+      for (const conversation of conversations.value) {
+        await api.saveConversation(conversation);
+      }
+    } catch {
+      // Keep localStorage as an offline write-through cache; the next mutation retries.
+    }
+  }
+  async function hydrateRemote(): Promise<void> {
+    try {
+      const remote = await api.conversations();
+      if (remote.length > 0) {
+        conversations.value = remote;
+        activeId.value = remote.find((conversation) => conversation.id === activeId.value)?.id ?? remote[0]?.id ?? null;
+        localStorage.setItem(storageKey, JSON.stringify(remote));
+      } else if (conversations.value.length > 0) {
+        for (const conversation of conversations.value) {
+          await api.saveConversation(conversation);
+        }
+      }
+      remoteReady.value = true;
+    } catch {
+      remoteReady.value = true;
+      useUiStore().showToast("Server history is unavailable; using this device's local history", "info");
+    }
   }
   function createConversation(provider: ProviderId = "lmstudio", model = ""): Conversation {
     const timestamp = now();
@@ -79,6 +121,7 @@ export const useConversationStore = defineStore("conversations", () => {
     conversations.value.unshift(conversation);
     activeId.value = conversation.id;
     persist();
+    if (remoteReady.value) void api.saveConversation(conversation).catch(() => undefined);
     return conversation;
   }
   function ensureConversation(provider: ProviderId, model: string): Conversation {
@@ -99,6 +142,7 @@ export const useConversationStore = defineStore("conversations", () => {
       activeId.value = conversations.value[0]?.id ?? null;
     }
     persist();
+    if (remoteReady.value) void api.deleteConversation(id).catch(() => undefined);
   }
   function renameConversation(id: string, title: string): void {
     const conversation = conversations.value.find((item) => item.id === id);
@@ -142,5 +186,5 @@ export const useConversationStore = defineStore("conversations", () => {
   if (!activeConversation.value) {
     createConversation();
   }
-  return { conversations, activeId, activeConversation, createConversation, ensureConversation, selectConversation, removeConversation, renameConversation, updateConversation, addMessage, updateLastAssistant };
+  return { conversations, activeId, activeConversation, remoteReady, hydrateRemote, createConversation, ensureConversation, selectConversation, removeConversation, renameConversation, updateConversation, addMessage, updateLastAssistant };
 });

@@ -5,8 +5,35 @@ export interface ModelInfo {
   id: string;
   name: string;
   loaded: boolean;
+  /** Whether the provider permits removing this installed model. */
+  deletable?: boolean;
   contextLength?: number;
   size?: number;
+}
+
+export type ModelOperation = "load" | "unload" | "download" | "delete";
+
+export interface AuthUser {
+  id: string;
+  displayName?: string;
+}
+
+export interface AuthStatus {
+  enabled: boolean;
+  authenticated: boolean;
+  user?: AuthUser;
+}
+
+export interface UpdateStatus {
+  enabled: boolean;
+  state: "idle" | "checking" | "available" | "updating" | "restart-required" | "failed" | "unavailable";
+  currentVersion: string;
+  latestVersion?: string;
+  message?: string;
+  checkedAt?: string;
+  releaseUrl?: string;
+  tokenConfigured?: boolean;
+  requiresToken?: boolean;
 }
 
 export interface ProviderStatus {

@@ -15,6 +15,12 @@ describe("provider model normalization", () => {
     expect(models).toEqual([{ provider: "lmstudio", id: "local/model", name: "Local Model", loaded: true, contextLength: 8192, instanceId: "instance-1" }]);
   });
 
+  it("supports the current LM Studio v1 key field", () => {
+    expect(normalizeLMStudioModels({ models: [{ key: "qwen/qwen3.5-27b", display_name: "Qwen 3.5 27B" }] })).toEqual([
+      { provider: "lmstudio", id: "qwen/qwen3.5-27b", name: "Qwen 3.5 27B", loaded: false },
+    ]);
+  });
+
   it("merges Ollama installed and running model lists", () => {
     const models = normalizeOllamaModels(
       { models: [{ name: "granite:latest", size: 1024 }] },

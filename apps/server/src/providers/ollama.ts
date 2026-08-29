@@ -39,6 +39,7 @@ export function normalizeOllamaModels(installedPayload: unknown, runningPayload:
       id,
       name: stringValue(item.display_name) ?? (details ? stringValue(details.families) : undefined) ?? id,
       loaded: running.has(id),
+      deletable: true,
     };
     const contextLength = numberValue(item.context_length) ?? numberValue(item.contextLength);
     const size = numberValue(item.size);
@@ -164,6 +165,26 @@ export class OllamaProvider implements AIProvider {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model, messages: [], stream: false, keep_alive: 0 }),
     }, 60_000);
+    await readJson(response);
+  }
+
+  async downloadModel(model: string): Promise<void> {
+    const baseUrl = this.requireUrl();
+    const response = await fetchWithTimeout(`${baseUrl}/api/pull`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model, stream: false }),
+    }, 30 * 60_000);
+    await readJson(response);
+  }
+
+  async deleteModel(model: string): Promise<void> {
+    const baseUrl = this.requireUrl();
+    const response = await fetchWithTimeout(`${baseUrl}/api/delete`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
+    }, 120_000);
     await readJson(response);
   }
 
