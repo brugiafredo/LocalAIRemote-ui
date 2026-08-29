@@ -12,6 +12,7 @@ export const useAppStore = defineStore("app", () => {
   ]);
   const models = ref<ModelInfo[]>([]);
   const loadingModels = ref(false);
+  const serverOnline = ref(true);
   const actionKey = ref<string | null>(null);
   const actionOperation = ref<ModelOperation | null>(null);
   const actionError = ref<string | null>(null);
@@ -30,10 +31,14 @@ export const useAppStore = defineStore("app", () => {
   function provider(providerId: ProviderId): ProviderStatus {
     return providers.value.find((item) => item.id === providerId) ?? { id: providerId, name: providerId, online: false };
   }
+  function setServerOnline(online: boolean): void {
+    serverOnline.value = online;
+  }
   async function refresh(): Promise<void> {
     loadingModels.value = true;
     try {
       const [nextProviders, nextModels] = await Promise.all([api.providers(), api.models()]);
+      serverOnline.value = true;
       providers.value = nextProviders;
       models.value = nextModels;
       if (!selectedModel.value && nextModels.length > 0) {
@@ -43,6 +48,7 @@ export const useAppStore = defineStore("app", () => {
         }
       }
     } catch (error) {
+      serverOnline.value = false;
       const ui = useUiStore();
       ui.showToast(error instanceof ApiError ? error.message : "Unable to refresh providers", "error");
     } finally {
@@ -142,5 +148,5 @@ export const useAppStore = defineStore("app", () => {
     return actionKey.value === modelKey(model);
   }
 
-  return { providers, models, loadingModels, actionKey, actionOperation, actionError, selectedModel, onlineProviders, modelKey, selectModel, provider, refresh, load, unload, downloadOllamaModel, deleteOllamaModel, isBusy };
+  return { providers, models, loadingModels, serverOnline, actionKey, actionOperation, actionError, selectedModel, onlineProviders, modelKey, selectModel, provider, setServerOnline, refresh, load, unload, downloadOllamaModel, deleteOllamaModel, isBusy };
 });

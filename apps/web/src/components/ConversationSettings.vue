@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import type { Conversation } from "../types";
 
-const props = defineProps<{ conversation: Conversation }>();
-const conversation = computed(() => props.conversation);
-const emit = defineEmits<{ update: [patch: Partial<Pick<Conversation, "systemPrompt" | "parameters">>] }>();
+const props = defineProps<{ conversation: Conversation; open: boolean }>();
+const emit = defineEmits<{ update: [patch: Partial<Pick<Conversation, "systemPrompt" | "parameters">>]; close: [] }>();
 
 const temperatureOptions = [
   { value: 0.2, label: "Precise" },
@@ -21,15 +19,27 @@ function updateParameter(key: "temperature" | "maxTokens" | "contextLength", eve
 </script>
 
 <template>
-  <details class="settings-card">
-    <summary><span>Advanced options</span><span class="text-muted">⌄</span></summary>
-    <div class="settings-content">
-      <label class="field-label">System prompt <textarea :value="conversation.systemPrompt" rows="3" placeholder="Give this conversation a role or style…" @input="emit('update', { systemPrompt: ($event.target as HTMLTextAreaElement).value })" /></label>
-      <div class="settings-pickers">
-        <label class="field-label">Response style <select :value="conversation.parameters.temperature" @change="updateParameter('temperature', $event)"><option v-for="option in temperatureOptions" :key="option.value" :value="option.value">{{ option.label }} · {{ option.value }}</option></select></label>
-        <label class="field-label">Max response <select :value="conversation.parameters.maxTokens" @change="updateParameter('maxTokens', $event)"><option v-for="value in tokenOptions" :key="value" :value="value">{{ value.toLocaleString() }} tokens</option></select></label>
-        <label class="field-label">Context window <select :value="conversation.parameters.contextLength" @change="updateParameter('contextLength', $event)"><option v-for="value in contextOptions" :key="value" :value="value">{{ value.toLocaleString() }} tokens</option></select></label>
-      </div>
+  <Teleport to="body">
+    <div v-if="props.open" class="modal-backdrop" role="presentation" @click.self="emit('close')" @keydown.esc="emit('close')">
+      <section class="modal-card settings-modal" role="dialog" aria-modal="true" aria-labelledby="conversation-settings-title" tabindex="-1">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Conversation</p>
+            <h2 id="conversation-settings-title">Advanced options</h2>
+            <p class="modal-subtitle">These settings apply only to this conversation.</p>
+          </div>
+          <button type="button" class="icon-button modal-close" aria-label="Close advanced options" title="Close" @click="emit('close')">×</button>
+        </div>
+        <div class="settings-content">
+          <label class="field-label">System prompt <textarea :value="props.conversation.systemPrompt" rows="4" placeholder="Give this conversation a role or style…" @input="emit('update', { systemPrompt: ($event.target as HTMLTextAreaElement).value })" /></label>
+          <div class="settings-pickers">
+            <label class="field-label">Response style <select :value="props.conversation.parameters.temperature" @change="updateParameter('temperature', $event)"><option v-for="option in temperatureOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+            <label class="field-label">Max response <select :value="props.conversation.parameters.maxTokens" @change="updateParameter('maxTokens', $event)"><option v-for="value in tokenOptions" :key="value" :value="value">{{ value.toLocaleString() }} tokens</option></select></label>
+            <label class="field-label">Context window <select :value="props.conversation.parameters.contextLength" @change="updateParameter('contextLength', $event)"><option v-for="value in contextOptions" :key="value" :value="value">{{ value.toLocaleString() }} tokens</option></select></label>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="secondary-button" @click="emit('close')">Done</button></div>
+      </section>
     </div>
-  </details>
+  </Teleport>
 </template>
