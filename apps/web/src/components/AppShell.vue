@@ -55,7 +55,7 @@ function removeConversation(id: string): void {
     <div v-if="ui.drawerOpen" class="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" @click="ui.setDrawer(false)" />
     <aside class="sidebar" :class="{ 'sidebar-open': ui.drawerOpen }" aria-label="Main navigation">
       <div class="flex items-center gap-3 px-4 py-5">
-        <div class="brand-mark" aria-hidden="true">✦</div>
+        <img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true" />
         <div>
           <p class="text-sm font-semibold tracking-wide text-ink">Local AI</p>
           <p class="text-[11px] text-muted">Private model workspace</p>
@@ -107,7 +107,7 @@ function removeConversation(id: string): void {
       <header class="topbar">
         <button class="icon-button lg:hidden" aria-label="Open navigation" @click="ui.setDrawer(true)">☰</button>
         <div class="flex min-w-0 items-center gap-3">
-          <div class="brand-mark small" aria-hidden="true">✦</div>
+          <img class="brand-mark small" src="/icon.svg" alt="" aria-hidden="true" />
           <div class="min-w-0">
             <p class="truncate text-sm font-semibold lg:hidden">Local AI</p>
             <p class="hidden text-sm font-medium text-muted lg:block">{{ route.name === 'chat' ? 'Chat workspace' : route.name === 'models' ? 'Model library' : 'System monitor' }}</p>

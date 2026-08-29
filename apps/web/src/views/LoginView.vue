@@ -12,7 +12,7 @@ async function submit(): Promise<void> {
 <template>
   <main class="auth-page">
     <form class="auth-card" @submit.prevent="submit">
-      <div class="brand-mark mx-auto" aria-hidden="true">✦</div>
+      <img class="brand-mark mx-auto" src="/icon.svg" alt="" aria-hidden="true" />
       <p class="eyebrow text-center">Private workspace</p>
       <h1 class="mt-2 text-center text-2xl font-semibold">Sign in to Local AI</h1>
       <p class="mt-2 text-center text-sm text-muted">Enter the password configured on the Local AI server.</p>

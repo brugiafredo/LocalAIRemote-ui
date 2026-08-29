@@ -9,7 +9,7 @@ const rendered = computed(() => props.message.role === "assistant" ? renderMarkd
 
 <template>
   <article class="message-row" :class="message.role === 'user' ? 'message-user' : 'message-assistant'">
-    <div class="message-avatar" :class="message.role === 'user' ? 'avatar-user' : 'avatar-assistant'" aria-hidden="true">{{ message.role === 'user' ? 'You' : '✦' }}</div>
+    <div class="message-avatar" :class="message.role === 'user' ? 'avatar-user' : 'avatar-assistant'" aria-hidden="true"><span v-if="message.role === 'user'">You</span><img v-else class="message-avatar-icon" src="/icon.svg" alt="" /></div>
     <div class="min-w-0 flex-1">
       <div class="mb-1 flex items-center gap-2 text-xs font-medium text-muted">
         <span>{{ message.role === 'user' ? 'You' : 'Assistant' }}</span>

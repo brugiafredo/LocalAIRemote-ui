@@ -115,7 +115,7 @@ async function sendMessage(content: string): Promise<void> {
     <div class="chat-panel">
       <div ref="messageList" class="message-list scrollbar-thin">
         <div v-if="!conversation || conversation.messages.length === 0" class="empty-chat">
-          <div class="empty-orb" aria-hidden="true">✦</div>
+          <div class="empty-orb" aria-hidden="true"><img src="/icon.svg" alt="" /></div>
           <h2>Start a local conversation</h2>
           <p>Choose a model, then ask anything. Responses stream directly from your local provider.</p>
         </div>
