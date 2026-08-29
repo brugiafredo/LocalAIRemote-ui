@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LMStudioProvider, normalizeLMStudioModels } from "../src/providers/lmstudio";
-import { normalizeOllamaModels, OllamaProvider } from "../src/providers/ollama";
+import { normalizeOllamaModels, OllamaProvider, parseOllamaNdjson } from "../src/providers/ollama";
 
 describe("provider model normalization", () => {
   it("normalizes LM Studio v1 metadata and loaded instances", () => {
@@ -27,6 +27,23 @@ describe("provider model normalization", () => {
       { models: [{ name: "granite:latest" }] },
     );
     expect(models[0]).toMatchObject({ provider: "ollama", id: "granite:latest", loaded: true, size: 1024 });
+  });
+
+  it("parses Ollama content and thinking chunks and surfaces stream errors", async () => {
+    const response = new Response([
+      JSON.stringify({ message: { role: "assistant", thinking: "Let me think" }, done: false }),
+      JSON.stringify({ message: { role: "assistant", content: "Hola" }, done: false }),
+      JSON.stringify({ message: { role: "assistant", content: "" }, done: true }),
+    ].join("\n"));
+    const chunks: Array<{ text: string; done?: boolean }> = [];
+    for await (const chunk of parseOllamaNdjson(response)) chunks.push(chunk);
+    expect(chunks).toEqual([{ text: "Let me think" }, { text: "Hola" }, { text: "", done: true }]);
+
+    await expect(async () => {
+      for await (const _chunk of parseOllamaNdjson(new Response(JSON.stringify({ error: "model failed" })))) {
+        // The iterator should reject before yielding a misleading empty answer.
+      }
+    }).rejects.toMatchObject({ code: "PROVIDER_ERROR", message: "model failed" });
   });
 });
 

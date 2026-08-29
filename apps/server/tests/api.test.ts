@@ -18,6 +18,10 @@ class TestProvider implements AIProvider {
   async *chat(_request: ChatRequest): AsyncIterable<ChatChunk> { yield { text: "hello" }; yield { text: "", done: true }; }
 }
 
+class TruncatedStreamProvider extends TestProvider {
+  override async *chat(_request: ChatRequest): AsyncIterable<ChatChunk> { yield { text: "hello" }; }
+}
+
 class FixedSystemService extends SystemService {
   override async snapshot(): Promise<SystemInfo> {
     return { cpu: { usagePercent: 12, cores: 8 }, memory: { usedBytes: 2, totalBytes: 4, usagePercent: 50 }, gpu: [], operatingSystem: "Test OS", uptimeSeconds: 10, capturedAt: new Date(0).toISOString() };
@@ -49,5 +53,18 @@ describe("unified API", () => {
     const response = await app.inject({ method: "POST", url: "/api/models/load", payload: { provider: "unknown", model: "" } });
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ error: true, code: "VALIDATION_ERROR" });
+  });
+
+  it("closes a provider stream with a terminal event when the provider omits done", async () => {
+    app = await buildApp(config, new ProviderRegistry([new TruncatedStreamProvider(true)]), new FixedSystemService());
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { provider: "lmstudio", model: "test-model", messages: [{ role: "user", content: "hello" }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("event: chunk");
+    expect(response.body).toContain('data: {"text":"hello"}');
+    expect(response.body).toContain("event: done");
   });
 });

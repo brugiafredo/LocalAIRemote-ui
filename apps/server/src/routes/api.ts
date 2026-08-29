@@ -137,8 +137,13 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
     });
     try {
       const stream = registry.get(body.provider).chat(body);
+      let completed = false;
       for await (const chunk of stream) {
+        completed = chunk.done === true;
         writeSse(reply, chunk.done ? "done" : "chunk", chunk);
+      }
+      if (!completed) {
+        writeSse(reply, "done", { text: "", done: true });
       }
       if (!reply.raw.writableEnded) {
         reply.raw.end();

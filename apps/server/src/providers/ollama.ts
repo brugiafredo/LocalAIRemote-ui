@@ -61,7 +61,11 @@ function ollamaMessages(request: ChatRequest): Array<{ role: "user" | "assistant
   return messages;
 }
 
-async function* parseNdjson(response: Response): AsyncIterable<ChatChunk> {
+function textValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+export async function* parseOllamaNdjson(response: Response): AsyncIterable<ChatChunk> {
   if (!response.body) {
     throw new AppError("PROVIDER_ERROR", "Ollama returned an empty stream", 502);
   }
@@ -90,8 +94,14 @@ async function* parseNdjson(response: Response): AsyncIterable<ChatChunk> {
       if (!isRecord(payload)) {
         continue;
       }
+      const providerError = textValue(payload.error);
+      if (providerError) {
+        throw new AppError("PROVIDER_ERROR", providerError, 502);
+      }
       const message = isRecord(payload.message) ? payload.message : undefined;
-      const text = message ? stringValue(message.content) : stringValue(payload.response);
+      const text = message
+        ? textValue(message.content) ?? textValue(message.thinking)
+        : textValue(payload.response) ?? textValue(payload.thinking);
       const done = payload.done === true;
       if (text || done) {
         yield { text: text ?? "", ...(done ? { done: true } : {}) };
@@ -197,6 +207,8 @@ export class OllamaProvider implements AIProvider {
         model: request.model,
         messages: ollamaMessages(request),
         stream: true,
+        // Do not spend the whole simple chat response budget on reasoning.
+        think: false,
         keep_alive: -1,
         options: {
           ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
@@ -208,6 +220,6 @@ export class OllamaProvider implements AIProvider {
     if (!response.ok) {
       await readJson(response);
     }
-    yield* parseNdjson(response);
+    yield* parseOllamaNdjson(response);
   }
 }

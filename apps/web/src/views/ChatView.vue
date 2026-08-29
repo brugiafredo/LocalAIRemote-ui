@@ -84,6 +84,9 @@ async function sendMessage(content: string): Promise<void> {
       conversations.updateLastAssistant(active.id, contentSoFar);
       await nextTick(scrollToBottom);
     }
+    if (!contentSoFar.trim()) {
+      throw new ApiError("Ollama finished without returning text. Check the model log and try again.", "EMPTY_PROVIDER_RESPONSE", 502);
+    }
   } catch (error) {
     const message = error instanceof ApiError ? error.message : "The chat request failed";
     conversations.updateLastAssistant(active.id, `I couldn't complete that request. ${message}`);
