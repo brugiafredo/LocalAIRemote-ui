@@ -135,14 +135,6 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
 
 <template>
   <section class="page-shell chat-page">
-    <div class="page-heading chat-heading">
-      <div class="min-w-0">
-        <p class="eyebrow">Local inference</p>
-        <h1>Chat</h1>
-        <p class="page-subtitle">A quiet space for conversations that stay on your machine.</p>
-      </div>
-    </div>
-
     <div class="chat-panel">
       <div ref="messageList" class="message-list scrollbar-thin">
         <div v-if="!conversation || conversation.messages.length === 0" class="empty-chat">
@@ -168,7 +160,7 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
           <button type="button" class="composer-tool-button" :disabled="!toolsAvailable" :aria-label="toolsAvailable ? 'Open tools' : 'Tools unavailable for this model'" :title="toolsAvailable ? 'Tools are not enabled in Local AI yet' : 'This model does not report tool support'" @click="openTools"><span aria-hidden="true">⌘</span><span class="tool-button-label">Tools</span></button>
           <button type="button" class="composer-tool-button" aria-label="Open advanced conversation options" title="Advanced conversation options" @click="settingsModalOpen = true"><span aria-hidden="true">⚙</span><span class="tool-button-label">Options</span></button>
           <span class="connection-state" :class="connection.tone" :title="connection.detail"><span class="status-dot" :class="connection.tone === 'online' ? 'online' : 'offline'" aria-hidden="true" /><span>{{ connection.label }}</span></span>
-          <button type="button" class="composer-tool-button composer-hide-button" aria-label="Hide composer" title="Hide composer to read" @click="composerHidden = true"><span aria-hidden="true">⌄</span><span class="tool-button-label">Hide</span></button>
+          <button type="button" class="composer-tool-button composer-hide-button" aria-label="Hide composer" title="Hide composer to read" @click="composerHidden = true"><span aria-hidden="true">×</span><span class="tool-button-label">Hide</span></button>
         </div>
         <div v-if="connection.tone === 'offline'" class="provider-status-banner" role="status">
           <span class="status-dot offline" aria-hidden="true" />
