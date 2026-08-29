@@ -32,27 +32,22 @@ The bridge also exposes the stable model id `active`. Selecting a model in the L
 
 ## 2. Configure OpenCode once
 
-OpenCode's current v2 configuration uses an OpenAI-compatible provider package and requires at least one model entry. Create an `opencode.jsonc` similar to this one and replace the example model with an id returned by `/v1/models`:
+Your installed OpenCode `1.18.x` uses the classic configuration keys `provider`, `npm`, and `options`. Use this format for that version. The newer v2 configuration uses different keys (`providers`, `package`, and `settings`) and will not be read correctly by OpenCode 1.x.
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "local-ai/active",
-  "providers": {
+  "provider": {
     "local-ai": {
       "name": "Local AI Remote",
-      "package": "@opencode-ai/ai/providers/openai-compatible",
-      "settings": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
         "baseURL": "http://SERVER:3000/v1",
         "apiKey": "{env:LOCAL_AI_BRIDGE_TOKEN}"
       },
       "models": {
         "active": {
-          "modelID": "active",
-          "capabilities": {
-            "input": ["text"],
-            "output": ["text"]
-          },
           "limit": {
             "context": 32768,
             "output": 8192
@@ -64,12 +59,27 @@ OpenCode's current v2 configuration uses an OpenAI-compatible provider package a
 }
 ```
 
-Set the token only in the environment where OpenCode runs; never commit it:
+Set the token only in the environment where OpenCode runs; never commit it. On Windows PowerShell:
 
 ```powershell
 $env:LOCAL_AI_BRIDGE_TOKEN = "replace-with-the-same-token"
 opencode
 ```
+
+On macOS/Linux, use:
+
+```bash
+export LOCAL_AI_BRIDGE_TOKEN="replace-with-the-same-token"
+opencode
+```
+
+Before opening OpenCode, verify the bridge from the same computer where OpenCode runs:
+
+```powershell
+curl.exe -i http://SERVER:3000/v1/models -H "Authorization: Bearer $env:LOCAL_AI_BRIDGE_TOKEN"
+```
+
+The response must be `HTTP/1.1 200` and include an `active` model. `401` means the token is missing or different from the server's `.env`; `403` means `OPENCODE_BRIDGE_ENABLED` is still false; `503` means the bridge token is not configured on the server; a timeout means the service is not reachable at that Tailscale/LAN address or port.
 
 To change the active local model, select a different model in Local AI Remote. OpenCode keeps using `local-ai/active`; no `config.json` edit is needed. You can also use a provider-prefixed model id when you need to pin a specific model. The bridge does not proxy tool calls yet; use it first for text/image-compatible local chat. Model capability metadata is still reported by `/v1/models`.
 
