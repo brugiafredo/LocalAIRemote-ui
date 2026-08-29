@@ -18,6 +18,8 @@ export interface AppConfig {
   updateEnabled: boolean;
   updateToken: string | null;
   updateBranch: string;
+  opencodeBridgeEnabled: boolean;
+  opencodeBridgeToken: string | null;
   projectRoot: string;
 }
 
@@ -59,6 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     updateEnabled: booleanValue(env.UPDATE_ENABLED, false),
     updateToken: env.UPDATE_TOKEN?.trim() || null,
     updateBranch: env.UPDATE_BRANCH?.trim() || "master",
+    opencodeBridgeEnabled: booleanValue(env.OPENCODE_BRIDGE_ENABLED, false),
+    opencodeBridgeToken: env.OPENCODE_BRIDGE_TOKEN?.trim() || null,
     projectRoot,
   };
 }

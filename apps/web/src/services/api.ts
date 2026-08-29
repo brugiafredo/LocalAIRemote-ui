@@ -1,4 +1,4 @@
-import type { ApiErrorShape, AuthStatus, ChatRequest, ChatStreamChunk, Conversation, ModelInfo, ProviderStatus, SystemInfo, UpdateStatus } from "../types";
+import type { ApiErrorShape, AuthStatus, ChatRequest, ChatStreamChunk, Conversation, ModelInfo, ProviderStatus, ServerVersion, SystemInfo, UpdateStatus } from "../types";
 
 const apiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
@@ -53,6 +53,11 @@ export const api = {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ provider, model }),
   }),
+  setBridgeActive: (provider: ModelInfo["provider"], model: string) => request<{ provider: ModelInfo["provider"]; model: string }>("/api/bridge/active", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ provider, model }),
+  }),
   authStatus: () => request<AuthStatus>("/api/auth/status"),
   login: (password: string) => request<AuthStatus>("/api/auth/login", {
     method: "POST",
@@ -81,6 +86,12 @@ export const api = {
     headers: { "content-type": "application/json" },
     ...(token ? { body: JSON.stringify({ token }) } : { body: JSON.stringify({}) }),
   }),
+  restartService: (token?: string) => request<UpdateStatus>("/api/service/restart", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    ...(token ? { body: JSON.stringify({ token }) } : { body: JSON.stringify({}) }),
+  }),
+  version: () => request<ServerVersion>("/api/version"),
   system: () => request<SystemInfo>("/api/system"),
   async *chat(input: ChatRequest): AsyncIterable<ChatStreamChunk> {
     let response: Response;

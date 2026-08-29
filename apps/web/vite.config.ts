@@ -1,11 +1,24 @@
+import { execFileSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { VitePWA } from "vite-plugin-pwa";
 
+function buildCommit(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() || "dev";
+  } catch {
+    return "dev";
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const clientCommit = env.VITE_BUILD_COMMIT?.trim() || buildCommit();
   return {
+    define: {
+      "import.meta.env.VITE_BUILD_COMMIT": JSON.stringify(clientCommit),
+    },
     plugins: [
       vue(),
       VitePWA({

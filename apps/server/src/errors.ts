@@ -12,6 +12,8 @@ export type ErrorCode =
   | "UPDATE_DISABLED"
   | "UPDATE_IN_PROGRESS"
   | "UPDATE_FAILED"
+  | "BRIDGE_DISABLED"
+  | "BRIDGE_MISCONFIGURED"
   | "INTERNAL_ERROR";
 
 export class AppError extends Error {

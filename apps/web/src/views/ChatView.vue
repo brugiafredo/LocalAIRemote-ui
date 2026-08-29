@@ -39,6 +39,7 @@ function scrollToBottom(): void {
 }
 function selectModel(model: ModelInfo): void {
   app.selectModel(model);
+  void api.setBridgeActive(model.provider, model.id).catch(() => undefined);
   if (conversation.value) conversations.updateConversation(conversation.value.id, { provider: model.provider, model: model.id });
 }
 function loadSelectedModel(): void {

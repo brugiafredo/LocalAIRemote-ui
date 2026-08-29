@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { api } from "../services/api";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { useAppStore } from "../stores/app";
 import { useConversationStore } from "../stores/conversations";
 import { useUiStore } from "../stores/ui";
 import { useAuthStore } from "../stores/auth";
+import type { ServerVersion } from "../types";
 import ToastHost from "./ToastHost.vue";
 
 const app = useAppStore();
@@ -14,15 +16,47 @@ const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 let refreshTimer: number | undefined;
+let versionTimer: number | undefined;
+const clientCommit = import.meta.env.VITE_BUILD_COMMIT || "dev";
+const clientShortCommit = clientCommit === "dev" ? clientCommit : clientCommit.slice(0, 7);
+const serverVersion = ref<ServerVersion | null>(null);
+const versionState = computed<"synced" | "mismatch" | "unavailable">(() => {
+  if (!serverVersion.value || serverVersion.value.shortCommit === "unknown") return "unavailable";
+  return serverVersion.value.commit === clientCommit || serverVersion.value.shortCommit === clientCommit ? "synced" : "mismatch";
+});
+const versionLabel = computed(() => {
+  if (!serverVersion.value) return `UI ${clientShortCommit}`;
+  if (versionState.value === "synced") return `Build ${clientShortCommit}`;
+  return `UI ${clientShortCommit} · server ${serverVersion.value.shortCommit}`;
+});
+const versionTitle = computed(() => {
+  if (!serverVersion.value) return `UI bundle ${clientCommit}; server version unavailable`;
+  return `UI bundle: ${clientCommit}\nServer: ${serverVersion.value.commit} (${serverVersion.value.branch})`;
+});
+
+async function refreshVersion(): Promise<void> {
+  try {
+    serverVersion.value = await api.version();
+  } catch {
+    serverVersion.value = null;
+  }
+}
 
 onMounted(async () => {
   await conversations.hydrateRemote();
   await app.refresh();
   refreshTimer = window.setInterval(() => void app.refresh(), 15_000);
 });
+onMounted(() => {
+  void refreshVersion();
+  versionTimer = window.setInterval(() => void refreshVersion(), 60_000);
+});
 onUnmounted(() => {
   if (refreshTimer !== undefined) {
     window.clearInterval(refreshTimer);
+  }
+  if (versionTimer !== undefined) {
+    window.clearInterval(versionTimer);
   }
 });
 
@@ -120,6 +154,10 @@ function removeConversation(id: string): void {
               {{ provider.id === 'lmstudio' ? 'LM' : 'OL' }}
             </span>
           </div>
+          <span class="version-indicator" :class="`version-${versionState}`" :title="versionTitle" aria-label="Application version">
+            <span class="status-dot" :class="versionState === 'synced' ? 'online' : 'offline'" aria-hidden="true" />
+            <span>{{ versionLabel }}</span>
+          </span>
           <button class="icon-button" :aria-label="ui.isDark ? 'Use light theme' : 'Use dark theme'" :title="ui.isDark ? 'Light theme' : 'Dark theme'" @click="ui.toggleTheme()">
             {{ ui.isDark ? '☼' : '☾' }}
           </button>

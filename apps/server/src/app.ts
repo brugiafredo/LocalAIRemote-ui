@@ -10,6 +10,8 @@ import { SystemService } from "./services/system";
 import { AuthService } from "./services/auth";
 import { ConversationStore } from "./services/conversations";
 import { UpdateService } from "./services/update";
+import { registerOpenCodeBridgeRoutes } from "./routes/openai";
+import { BridgeService } from "./services/bridge";
 
 export async function buildApp(
   config: AppConfig,
@@ -18,6 +20,7 @@ export async function buildApp(
   auth = new AuthService(config),
   conversations = new ConversationStore(config.dataDir ?? path.resolve(process.cwd(), "data")),
   updates = new UpdateService(config),
+  bridge = new BridgeService(config.dataDir ?? path.resolve(process.cwd(), "data")),
 ): Promise<FastifyInstance> {
   // Images are transported as base64 data URLs. Keep the limit bounded while
   // allowing two 4 MB images plus the conversation JSON envelope.
@@ -25,7 +28,8 @@ export async function buildApp(
   await app.register(cors, {
     origin: config.corsOrigins,
   });
-  registerApiRoutes(app, registry, systemService, auth, conversations, updates);
+  registerApiRoutes(app, registry, systemService, auth, conversations, updates, bridge);
+  registerOpenCodeBridgeRoutes(app, config, registry, bridge);
 
   const webDistCandidates = [
     path.resolve(process.cwd(), "apps/web/dist"),

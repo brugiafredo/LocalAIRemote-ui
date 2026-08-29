@@ -15,9 +15,17 @@ export interface UpdateStatus {
   requiresToken?: boolean;
 }
 
+export interface ServerVersion {
+  commit: string;
+  shortCommit: string;
+  branch: string;
+  startedAt: string;
+}
+
 export class UpdateService {
   private readonly config: AppConfig;
   private running = false;
+  private readonly startedAt = new Date().toISOString();
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -34,6 +42,27 @@ export class UpdateService {
 
   private async currentVersion(): Promise<string> {
     try { return await this.git(["rev-parse", "--short", "HEAD"]); } catch { return "unknown"; }
+  }
+
+  async version(): Promise<ServerVersion> {
+    const [commit, branch] = await Promise.all([
+      this.git(["rev-parse", "HEAD"]).catch(() => "unknown"),
+      this.git(["branch", "--show-current"]).catch(() => "unknown"),
+    ]);
+    return {
+      commit,
+      shortCommit: commit === "unknown" ? "unknown" : commit.slice(0, 7),
+      branch: branch || "unknown",
+      startedAt: this.startedAt,
+    };
+  }
+
+  private requestRestart(): void {
+    if (this.config.nodeEnv !== "production") return;
+    // WinSW's onfailure policy restarts the process only after a non-zero exit.
+    // Delay long enough for the HTTP response to reach the client first.
+    const timer = setTimeout(() => process.exit(75), 1_000);
+    timer.unref();
   }
 
   async check(): Promise<UpdateStatus> {
@@ -83,12 +112,7 @@ export class UpdateService {
       status.currentVersion = await this.currentVersion();
       status.state = "restart-required";
       status.message = "Update installed; requesting a service restart";
-      if (this.config.nodeEnv === "production") {
-        // WinSW's onfailure policy restarts the process only after a non-zero exit.
-        // Exit 75 after the response has had time to flush so the service manager reloads the build.
-        const timer = setTimeout(() => process.exit(75), 1_000);
-        timer.unref();
-      }
+      this.requestRestart();
     } catch (error) {
       status.state = "failed";
       status.message = error instanceof AppError ? error.message : "Update failed; the previous build is still running";
@@ -97,5 +121,21 @@ export class UpdateService {
       this.running = false;
     }
     return status;
+  }
+
+  async restart(): Promise<UpdateStatus> {
+    if (this.running) throw new AppError("UPDATE_IN_PROGRESS", "An update or restart is already running", 409);
+    this.running = true;
+    const status = this.base("restart-required");
+    try {
+      status.currentVersion = await this.currentVersion();
+      status.message = this.config.nodeEnv === "production"
+        ? "Restart requested; waiting for the service to come back online"
+        : "Restart requested (development/test mode does not terminate the process)";
+      this.requestRestart();
+      return status;
+    } finally {
+      this.running = false;
+    }
   }
 }

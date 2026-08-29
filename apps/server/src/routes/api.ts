@@ -8,6 +8,7 @@ import { ProviderRegistry } from "../providers/registry";
 import { AuthService } from "../services/auth";
 import { ConversationStore } from "../services/conversations";
 import { UpdateService } from "../services/update";
+import { BridgeService } from "../services/bridge";
 
 function sendError(reply: FastifyReply, error: unknown): void {
   if (reply.sent) {
@@ -25,7 +26,7 @@ function writeSse(reply: FastifyReply, event: string, payload: ChatChunk | { err
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
-export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegistry, systemService: SystemService, auth: AuthService, conversations: ConversationStore, updates: UpdateService): void {
+export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegistry, systemService: SystemService, auth: AuthService, conversations: ConversationStore, updates: UpdateService, bridge: BridgeService): void {
   app.get("/api/auth/status", async (request, reply) => reply.send(auth.status(request)));
 
   app.post("/api/auth/login", async (request, reply) => {
@@ -114,6 +115,20 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
       if (!provider.deleteModel) throw new AppError("MODEL_ACTION_UNSUPPORTED", "This provider does not support model deletion", 405);
       await provider.deleteModel(body.model);
       reply.send({ ok: true, provider: body.provider, model: body.model, deleted: true });
+    } catch (error) {
+      sendError(reply, error);
+    }
+  });
+
+  app.post("/api/bridge/active", async (request, reply) => {
+    try {
+      auth.requireUser(request);
+      const body = ModelActionSchema.parse(request.body);
+      const models = await registry.get(body.provider).listModels();
+      if (!models.some((model) => model.id === body.model)) {
+        throw new AppError("MODEL_NOT_FOUND", `Model is not available: ${body.provider}/${body.model}`, 404);
+      }
+      reply.send(await bridge.setActive(body.provider, body.model));
     } catch (error) {
       sendError(reply, error);
     }
@@ -215,6 +230,25 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
       const user = auth.userFor(request);
       updates.authorize(body.token, Boolean(user));
       reply.send(await updates.update());
+    } catch (error) {
+      sendError(reply, error);
+    }
+  });
+
+  app.post("/api/service/restart", async (request, reply) => {
+    try {
+      const body = UpdateTokenSchema.parse(request.body ?? {});
+      const user = auth.userFor(request);
+      updates.authorize(body.token, Boolean(user));
+      reply.send(await updates.restart());
+    } catch (error) {
+      sendError(reply, error);
+    }
+  });
+
+  app.get("/api/version", async (_request, reply) => {
+    try {
+      reply.send(await updates.version());
     } catch (error) {
       sendError(reply, error);
     }

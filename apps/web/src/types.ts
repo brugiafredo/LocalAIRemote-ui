@@ -46,6 +46,13 @@ export interface UpdateStatus {
   requiresToken?: boolean;
 }
 
+export interface ServerVersion {
+  commit: string;
+  shortCommit: string;
+  branch: string;
+  startedAt: string;
+}
+
 export interface ProviderStatus {
   id: ProviderId;
   name: string;
