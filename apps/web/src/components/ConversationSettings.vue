@@ -22,7 +22,7 @@ function updateParameter(key: "temperature" | "maxTokens" | "contextLength", eve
 
 <template>
   <details class="settings-card">
-    <summary><span>Conversation settings</span><span class="text-muted">⌄</span></summary>
+    <summary><span>Advanced options</span><span class="text-muted">⌄</span></summary>
     <div class="settings-content">
       <label class="field-label">System prompt <textarea :value="conversation.systemPrompt" rows="3" placeholder="Give this conversation a role or style…" @input="emit('update', { systemPrompt: ($event.target as HTMLTextAreaElement).value })" /></label>
       <div class="settings-pickers">

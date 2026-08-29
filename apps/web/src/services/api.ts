@@ -113,7 +113,12 @@ export const api = {
       dataLines = [];
       const currentEvent = eventName;
       eventName = "chunk";
-      const payload: unknown = JSON.parse(raw) as unknown;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw) as unknown;
+      } catch {
+        throw new ApiError("The server returned an invalid chat event. Check the server log and try again.", "PROVIDER_ERROR", 502);
+      }
       if (currentEvent === "error") {
         const error = payload as Partial<ApiErrorShape>;
         throw new ApiError(error.message || "The provider request failed", error.code || "PROVIDER_ERROR", 502);

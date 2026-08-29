@@ -138,6 +138,34 @@ export function nativeInput(request: ChatRequest): string | NativeInputItem[] {
   ];
 }
 
+type OpenAIMessage = {
+  role: "system" | "user" | "assistant";
+  content: string | Array<Record<string, unknown>>;
+};
+
+function openAiMessages(request: ChatRequest): OpenAIMessage[] {
+  const messages = request.messages.map((message): OpenAIMessage => {
+    if (!message.images?.length) {
+      return { role: message.role, content: message.content };
+    }
+    return {
+      role: message.role,
+      content: [
+        ...(message.content ? [{ type: "text", text: message.content }] : []),
+        ...message.images.map((image) => ({ type: "image_url", image_url: { url: image.dataUrl } })),
+      ],
+    };
+  });
+  if (request.systemPrompt?.trim() && !messages.some((message) => message.role === "system")) {
+    messages.unshift({ role: "system", content: request.systemPrompt.trim() });
+  }
+  return messages;
+}
+
+function textValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function textFromEvent(value: unknown, eventName: string): string | undefined {
   if (typeof value === "string") {
     return eventName.includes("message") || eventName.includes("delta") ? value : undefined;
@@ -153,11 +181,19 @@ function textFromEvent(value: unknown, eventName: string): string | undefined {
   }
   const delta = value.delta;
   if (isRecord(delta)) {
-    return stringValue(delta.content) ?? stringValue(delta.text);
+    return textValue(delta.content) ?? textValue(delta.text);
   }
   const message = value.message;
   if (isRecord(message)) {
-    return stringValue(message.content) ?? stringValue(message.text);
+    return textValue(message.content) ?? textValue(message.text);
+  }
+  const output = value.output;
+  if (Array.isArray(output)) {
+    for (const item of output) {
+      if (!isRecord(item)) continue;
+      const content = textValue(item.content) ?? textValue(item.text);
+      if (content) return content;
+    }
   }
   const choices = value.choices;
   if (Array.isArray(choices)) {
@@ -165,11 +201,11 @@ function textFromEvent(value: unknown, eventName: string): string | undefined {
     if (isRecord(first)) {
       const choiceDelta = first.delta;
       if (isRecord(choiceDelta)) {
-        return stringValue(choiceDelta.content) ?? stringValue(choiceDelta.text);
+        return textValue(choiceDelta.content) ?? textValue(choiceDelta.text);
       }
       const choiceMessage = first.message;
       if (isRecord(choiceMessage)) {
-        return stringValue(choiceMessage.content);
+        return textValue(choiceMessage.content);
       }
     }
   }
@@ -348,11 +384,29 @@ export class LMStudioProvider implements AIProvider {
     if (request.maxTokens !== undefined) {
       body.max_output_tokens = request.maxTokens;
     }
-    const response = await fetchWithTimeout(`${baseUrl}/api/v1/chat`, {
+    let response = await fetchWithTimeout(`${baseUrl}/api/v1/chat`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
       body: JSON.stringify(body),
     }, 120_000);
+    if (response.status === 404) {
+      const compatibilityBody: Record<string, unknown> = {
+        model: request.model,
+        messages: openAiMessages(request),
+        stream: true,
+      };
+      if (request.temperature !== undefined) {
+        compatibilityBody.temperature = request.temperature;
+      }
+      if (request.maxTokens !== undefined) {
+        compatibilityBody.max_tokens = request.maxTokens;
+      }
+      response = await fetchWithTimeout(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify(compatibilityBody),
+      }, 120_000);
+    }
     if (!response.ok) {
       await readJson(response);
     }

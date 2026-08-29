@@ -93,7 +93,7 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
       throw new ApiError("The model finished without returning text. Check the provider log and try again.", "EMPTY_PROVIDER_RESPONSE", 502);
     }
   } catch (error) {
-    const message = error instanceof ApiError ? error.message : "The chat request failed";
+    const message = error instanceof ApiError ? error.message : error instanceof Error && error.message ? error.message : "The chat request failed";
     conversations.updateLastAssistant(active.id, `I couldn't complete that request. ${message}`);
     ui.showToast(message, "error");
   } finally {
@@ -128,6 +128,13 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
         <MessageBubble v-for="(message, index) in conversation?.messages" :key="`${conversation?.id}-${index}`" :message="message" :streaming="streaming && index === (conversation?.messages.length ?? 0) - 1" />
       </div>
       <div class="chat-bottom">
+        <div v-if="selectedModel" class="chat-model-bar" aria-label="Active model">
+          <span class="status-dot" :class="selectedModel.loaded || selectedModel.provider === 'lmstudio' ? 'online' : 'offline'" aria-hidden="true" />
+          <span class="chat-model-label">Using</span>
+          <strong class="chat-model-name" :title="selectedModel.id">{{ selectedModel.name }}</strong>
+          <span class="chat-model-provider">{{ selectedModel.provider === 'lmstudio' ? 'LM Studio' : 'Ollama' }}</span>
+          <ModelCapabilities :model="selectedModel" compact />
+        </div>
         <div v-if="selectedModel && !selectedModel.loaded" class="inline-alert"><span aria-hidden="true">⌁</span><span class="flex-1">{{ selectedModel.provider === 'lmstudio' ? 'LM Studio will load this model automatically when you send the first message.' : `Load ${selectedModel.name} before chatting.` }}</span><button v-if="selectedModel.provider !== 'lmstudio'" class="text-button" :disabled="app.isBusy(selectedModel)" @click="loadSelectedModel">{{ app.isBusy(selectedModel) ? 'Loading…' : 'Load now' }}</button></div>
         <ConversationSettings v-if="conversation" :conversation="conversation" @update="updateSettings" />
         <ChatComposer :disabled="loading || !selectedModel || !app.provider(selectedModel.provider).online || (selectedModel.provider === 'ollama' && !selectedModel.loaded)" :can-attach-images="Boolean(selectedModel?.capabilities?.includes('vision'))" @send="sendMessage" />

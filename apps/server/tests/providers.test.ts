@@ -86,4 +86,65 @@ describe("offline provider handling", () => {
     const status = await new OllamaProvider(null).health();
     expect(status).toMatchObject({ id: "ollama", online: false });
   });
+
+  it("falls back to the OpenAI-compatible LM Studio chat endpoint after a 404", async () => {
+    const originalFetch = globalThis.fetch;
+    const urls: string[] = [];
+    const bodies: string[] = [];
+    globalThis.fetch = (async (input, init) => {
+      urls.push(String(input));
+      bodies.push(typeof init?.body === "string" ? init.body : "");
+      if (urls.length === 1) {
+        return new Response("not found", { status: 404 });
+      }
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"Hola"}}]}\n\n' +
+          'data: {"choices":[{"delta":{"content":" mundo"}}]}\n\n' +
+          "data: [DONE]\n\n",
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const chunks = [];
+      for await (const chunk of new LMStudioProvider("http://lmstudio.test").chat({
+        provider: "lmstudio",
+        model: "local/model",
+        messages: [{
+          role: "user",
+          content: "Describe this",
+          images: [{ dataUrl: "data:image/png;base64,QUJD", mimeType: "image/png" }],
+        }],
+        systemPrompt: "Be concise",
+        temperature: 0.2,
+        maxTokens: 128,
+      })) {
+        chunks.push(chunk);
+      }
+
+      expect(urls).toEqual([
+        "http://lmstudio.test/api/v1/chat",
+        "http://lmstudio.test/v1/chat/completions",
+      ]);
+      expect(JSON.parse(bodies[1])).toMatchObject({
+        model: "local/model",
+        stream: true,
+        temperature: 0.2,
+        max_tokens: 128,
+        messages: [
+          { role: "system", content: "Be concise" },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe this" },
+              { type: "image_url", image_url: { url: "data:image/png;base64,QUJD" } },
+            ],
+          },
+        ],
+      });
+      expect(chunks).toEqual([{ text: "Hola" }, { text: " mundo" }, { text: "", done: true }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

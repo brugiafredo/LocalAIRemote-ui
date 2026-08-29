@@ -149,7 +149,9 @@ export function registerApiRoutes(app: FastifyInstance, registry: ProviderRegist
         reply.raw.end();
       }
     } catch (error) {
-      const appError = asAppError(error);
+      const appError = error instanceof AppError
+        ? error
+        : new AppError("PROVIDER_ERROR", error instanceof Error && error.message ? error.message : "The provider chat request failed", 502);
       if (!reply.raw.writableEnded) {
         writeSse(reply, "error", { error: true, code: appError.code, message: appError.message });
         reply.raw.end();
