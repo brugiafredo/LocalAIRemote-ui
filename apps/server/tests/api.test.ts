@@ -76,6 +76,11 @@ describe("unified API", () => {
     expect(response.json()).toMatchObject({
       shortCommit: expect.stringMatching(/^(unknown|[0-9a-f]{7})$/),
       commit: expect.any(String),
+      buildCommit: expect.stringMatching(/^(unknown|[0-9a-f]{7,40})$/),
+      buildShortCommit: expect.stringMatching(/^(unknown|[0-9a-f]{7})$/),
+      runningCommit: expect.stringMatching(/^(unknown|[0-9a-f]{7,40})$/),
+      runningShortCommit: expect.stringMatching(/^(unknown|[0-9a-f]{7})$/),
+      bootId: expect.any(String),
       branch: expect.any(String),
       startedAt: expect.any(String),
     });

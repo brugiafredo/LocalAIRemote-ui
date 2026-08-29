@@ -20,18 +20,24 @@ let versionTimer: number | undefined;
 const clientCommit = import.meta.env.VITE_BUILD_COMMIT || "dev";
 const clientShortCommit = clientCommit === "dev" ? clientCommit : clientCommit.slice(0, 7);
 const serverVersion = ref<ServerVersion | null>(null);
+const serverBuildCommit = computed(() => serverVersion.value?.buildCommit || "unknown");
+const serverBuildShortCommit = computed(() => serverVersion.value?.buildShortCommit || "unknown");
+const serverRunningCommit = computed(() => serverVersion.value?.runningCommit || "unknown");
+const serverRunningShortCommit = computed(() => serverVersion.value?.runningShortCommit || "unknown");
 const versionState = computed<"synced" | "mismatch" | "unavailable">(() => {
-  if (!serverVersion.value || serverVersion.value.shortCommit === "unknown") return "unavailable";
-  return serverVersion.value.commit === clientCommit || serverVersion.value.shortCommit === clientCommit ? "synced" : "mismatch";
+  if (!serverVersion.value || serverBuildCommit.value === "unknown" || serverRunningCommit.value === "unknown") return "unavailable";
+  const uiMatchesBuild = serverBuildCommit.value === clientCommit || serverBuildShortCommit.value === clientCommit;
+  const processMatchesBuild = serverRunningCommit.value === serverBuildCommit.value || serverRunningCommit.value.startsWith(serverBuildCommit.value) || serverBuildCommit.value.startsWith(serverRunningCommit.value);
+  return uiMatchesBuild && processMatchesBuild ? "synced" : "mismatch";
 });
 const versionLabel = computed(() => {
   if (!serverVersion.value) return `UI ${clientShortCommit}`;
   if (versionState.value === "synced") return `Build ${clientShortCommit}`;
-  return `UI ${clientShortCommit} · server ${serverVersion.value.shortCommit}`;
+  return `UI ${clientShortCommit} · run ${serverRunningShortCommit.value} · build ${serverBuildShortCommit.value}`;
 });
 const versionTitle = computed(() => {
   if (!serverVersion.value) return `UI bundle ${clientCommit}; server version unavailable`;
-  return `UI bundle: ${clientCommit}\nServer: ${serverVersion.value.commit} (${serverVersion.value.branch})`;
+  return `UI bundle: ${clientCommit}\nServer source: ${serverVersion.value.commit} (${serverVersion.value.branch})\nServer process: ${serverVersion.value.runningCommit}\nServer UI build: ${serverBuildCommit.value}\nBoot: ${serverVersion.value.bootId}`;
 });
 
 async function refreshVersion(): Promise<void> {

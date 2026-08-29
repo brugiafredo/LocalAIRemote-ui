@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
@@ -12,6 +13,16 @@ function buildCommit(): string {
   }
 }
 
+function buildMetadataPlugin(commit: string) {
+  return {
+    name: "local-ai-build-metadata",
+    writeBundle() {
+      const metadataPath = fileURLToPath(new URL("./dist/build-meta.json", import.meta.url));
+      writeFileSync(metadataPath, JSON.stringify({ commit, builtAt: new Date().toISOString() }) + "\n", "utf8");
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const clientCommit = env.VITE_BUILD_COMMIT?.trim() || buildCommit();
@@ -21,6 +32,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       vue(),
+      buildMetadataPlugin(clientCommit),
       VitePWA({
         registerType: "autoUpdate",
         includeAssets: ["icon.svg"],

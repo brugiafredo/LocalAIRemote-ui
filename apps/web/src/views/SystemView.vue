@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, ApiError } from "../services/api";
+import { updateServiceWorker } from "../services/pwa";
 import { useUiStore } from "../stores/ui";
 import type { ServerVersion, SystemInfo, UpdateStatus } from "../types";
 
@@ -14,9 +15,15 @@ const updateToken = ref(localStorage.getItem("local-ai-update-token") || "");
 const clientCommit = import.meta.env.VITE_BUILD_COMMIT || "dev";
 const clientShortCommit = clientCommit === "dev" ? clientCommit : clientCommit.slice(0, 7);
 const serverVersion = ref<ServerVersion | null>(null);
+const serverBuildCommit = computed(() => serverVersion.value?.buildCommit || "unknown");
+const serverBuildShortCommit = computed(() => serverVersion.value?.buildShortCommit || "unknown");
+const serverRunningCommit = computed(() => serverVersion.value?.runningCommit || "unknown");
+const serverRunningShortCommit = computed(() => serverVersion.value?.runningShortCommit || "unknown");
 const versionState = computed<"synced" | "mismatch" | "unavailable">(() => {
-  if (!serverVersion.value || serverVersion.value.shortCommit === "unknown") return "unavailable";
-  return serverVersion.value.commit === clientCommit || serverVersion.value.shortCommit === clientCommit ? "synced" : "mismatch";
+  if (!serverVersion.value || serverBuildCommit.value === "unknown" || serverRunningCommit.value === "unknown") return "unavailable";
+  const uiMatchesBuild = serverBuildCommit.value === clientCommit || serverBuildShortCommit.value === clientCommit;
+  const processMatchesBuild = serverRunningCommit.value === serverBuildCommit.value || serverRunningCommit.value.startsWith(serverBuildCommit.value) || serverBuildCommit.value.startsWith(serverRunningCommit.value);
+  return uiMatchesBuild && processMatchesBuild ? "synced" : "mismatch";
 });
 const updateReloadDelayMs = 5_000;
 let timer: number | undefined;
@@ -44,16 +51,25 @@ async function checkForUpdate(): Promise<void> {
   catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to check for updates", "error"); }
   finally { updateBusy.value = false; }
 }
-async function waitForUpdatedServer(): Promise<void> {
+function versionsMatch(left: string | undefined, right: string | undefined): boolean {
+  if (!left || !right || left === "unknown" || right === "unknown") return false;
+  return left === right || left.startsWith(right) || right.startsWith(left);
+}
+async function waitForUpdatedServer(expectedBuild?: string, previousStartedAt?: string): Promise<boolean> {
   await new Promise<void>((resolve) => window.setTimeout(resolve, updateReloadDelayMs));
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
-      await api.health();
-      return;
+      const [health, version] = await Promise.all([api.health(), api.version()]);
+      const serverRestarted = !previousStartedAt || version.startedAt !== previousStartedAt;
+      const buildReady = !expectedBuild || versionsMatch(version.buildCommit, expectedBuild);
+      const processReady = versionsMatch(version.runningCommit, version.buildCommit);
+      if (health.status === "ok" && serverRestarted && buildReady && processReady) return true;
     } catch {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
     }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
   }
+  return false;
 }
 function forceReload(): void {
   const url = new URL(window.location.href);
@@ -64,10 +80,15 @@ async function installUpdate(): Promise<void> {
   if (!window.confirm("Pull the latest code, rebuild the app, and restart the service?")) return;
   updateBusy.value = true;
   try {
+    const previous = await api.version().catch(() => null);
     update.value = await api.triggerUpdate(updateToken.value || undefined);
     ui.showToast("Update installed. Reloading in 5 seconds…", "success");
-    await waitForUpdatedServer();
-    forceReload();
+    const ready = await waitForUpdatedServer(update.value.buildVersion || update.value.currentVersion, previous?.startedAt);
+    if (ready) {
+      await updateServiceWorker(false);
+      forceReload();
+    }
+    else ui.showToast("The update was built, but the restarted service could not be confirmed. Check System again.", "error");
   }
   catch (error) { ui.showToast(error instanceof ApiError ? error.message : "Unable to install update", "error"); }
   finally { updateBusy.value = false; }
@@ -77,10 +98,15 @@ async function restartService(): Promise<void> {
   restartBusy.value = true;
   localStorage.setItem("local-ai-update-token", updateToken.value);
   try {
+    const previous = await api.version().catch(() => null);
     await api.restartService(updateToken.value || undefined);
     ui.showToast("Service restart requested. Reloading in 5 seconds…", "success");
-    await waitForUpdatedServer();
-    forceReload();
+    const ready = await waitForUpdatedServer(undefined, previous?.startedAt);
+    if (ready) {
+      await updateServiceWorker(false);
+      forceReload();
+    }
+    else ui.showToast("The service did not return with a new start time. Check its Windows service logs.", "error");
   } catch (error) {
     ui.showToast(error instanceof ApiError ? error.message : "Unable to restart the service", "error");
   } finally {
@@ -116,8 +142,8 @@ function formatUptime(seconds: number | null): string {
       </div>
       <section class="system-section"><div class="section-heading-row"><div><h2 class="section-heading">Graphics</h2><p class="text-xs text-muted">Detected adapters and reported memory.</p></div></div><div v-if="info.gpu.length" class="gpu-grid"><article v-for="gpu in info.gpu" :key="gpu.name" class="gpu-card"><div class="gpu-icon" aria-hidden="true">▰</div><div class="min-w-0"><h3 class="truncate font-semibold" :title="gpu.name">{{ gpu.name }}</h3><p class="mt-1 text-xs text-muted">{{ formatBytes(gpu.memoryUsedBytes) }} used · {{ formatBytes(gpu.memoryTotalBytes) }} total</p></div></article></div><div v-else class="empty-provider"><span aria-hidden="true">◌</span><div><p>No graphics adapter data reported</p><span>The operating system did not expose GPU telemetry.</span></div></div></section>
       <section class="system-section"><div class="section-heading-row"><div><h2 class="section-heading">Host</h2><p class="text-xs text-muted">Environment details for this Local AI server.</p></div></div><div class="host-card"><div><span class="metric-label">Operating system</span><p class="mt-2 font-medium">{{ info.operatingSystem }}</p></div><div><span class="metric-label">Last updated</span><p class="mt-2 font-medium">{{ new Date(info.capturedAt).toLocaleTimeString() }}</p></div></div></section>
-      <section class="system-section"><div class="section-heading-row"><div><h2 class="section-heading">Build identity</h2><p class="text-xs text-muted">Use this to confirm that the browser bundle and running server come from the same commit.</p></div></div><div class="version-grid"><article class="metric-card"><span class="metric-label">UI bundle</span><p class="metric-value version-value" :title="clientCommit">{{ clientShortCommit }}</p></article><article class="metric-card"><span class="metric-label">Server</span><p class="metric-value version-value" :title="serverVersion?.commit">{{ serverVersion?.shortCommit || 'unavailable' }}</p><p class="metric-foot">{{ serverVersion?.branch || 'Server version endpoint unavailable' }}</p></article><article class="metric-card"><span class="metric-label">Status</span><p class="metric-value version-value" :class="versionState === 'synced' ? 'version-ok' : versionState === 'mismatch' ? 'version-warning' : ''">{{ versionState === 'synced' ? 'Synced' : versionState === 'mismatch' ? 'Mismatch' : 'Unknown' }}</p><p class="metric-foot">{{ serverVersion?.startedAt ? `Started ${new Date(serverVersion.startedAt).toLocaleString()}` : 'Refresh to check again' }}</p></article></div></section>
-      <section class="system-section update-section"><div class="section-heading-row"><div><h2 class="section-heading">Remote updates</h2><p class="text-xs text-muted">Safely pull, build, restart, and verify this service from the UI when enabled in .env.</p></div></div><article class="update-card"><div class="flex min-w-0 items-start justify-between gap-4"><div><p class="metric-label">Status</p><p class="mt-2 font-medium">{{ update?.message || 'Checking update configuration…' }}</p><p v-if="update?.currentVersion" class="mt-1 text-xs text-muted">Current: {{ update.currentVersion }}<span v-if="update.latestVersion"> · Remote: {{ update.latestVersion }}</span></p></div><span v-if="update" class="status-pill" :class="update.state === 'available' ? 'status-online' : 'status-offline'">{{ update.state }}</span></div><div v-if="update?.enabled && update.requiresToken" class="mt-4"><label class="field-label">Update token <input v-model="updateToken" type="password" autocomplete="off" placeholder="Configured in UPDATE_TOKEN" /></label></div><div class="mt-4 flex flex-wrap gap-2"><button class="secondary-button" :disabled="updateBusy || restartBusy || !update?.enabled" @click="checkForUpdate">{{ updateBusy ? 'Checking…' : 'Check now' }}</button><button v-if="update?.state === 'available'" class="primary-button" :disabled="updateBusy || restartBusy" @click="installUpdate">{{ updateBusy ? 'Updating…' : 'Install and restart' }}</button><button class="secondary-button" :disabled="updateBusy || restartBusy || !update?.enabled" @click="restartService">{{ restartBusy ? 'Restarting…' : 'Restart service' }}</button></div></article></section>
+      <section class="system-section"><div class="section-heading-row"><div><h2 class="section-heading">Build identity</h2><p class="text-xs text-muted">Use this to confirm that the browser bundle and compiled UI served by the server come from the same commit.</p></div></div><div class="version-grid"><article class="metric-card"><span class="metric-label">UI bundle</span><p class="metric-value version-value" :title="clientCommit">{{ clientShortCommit }}</p></article><article class="metric-card"><span class="metric-label">Server UI build</span><p class="metric-value version-value" :title="serverBuildCommit">{{ serverBuildShortCommit }}</p><p class="metric-foot">Running {{ serverRunningShortCommit }} · source {{ serverVersion?.shortCommit || 'unavailable' }} · {{ serverVersion?.branch || 'version endpoint unavailable' }}</p></article><article class="metric-card"><span class="metric-label">Status</span><p class="metric-value version-value" :class="versionState === 'synced' ? 'version-ok' : versionState === 'mismatch' ? 'version-warning' : ''">{{ versionState === 'synced' ? 'Synced' : versionState === 'mismatch' ? 'Mismatch' : 'Unknown' }}</p><p class="metric-foot">{{ serverVersion?.startedAt ? `Started ${new Date(serverVersion.startedAt).toLocaleString()}` : 'Refresh to check again' }}</p></article></div></section>
+      <section class="system-section update-section"><div class="section-heading-row"><div><h2 class="section-heading">Remote updates</h2><p class="text-xs text-muted">Safely pull, build, restart, and verify this service from the UI when enabled in .env.</p></div></div><article class="update-card"><div class="flex min-w-0 items-start justify-between gap-4"><div><p class="metric-label">Status</p><p class="mt-2 font-medium">{{ update?.message || 'Checking update configuration…' }}</p><p v-if="update?.currentVersion" class="mt-1 text-xs text-muted">Source: {{ update.currentVersion }}<span v-if="update.buildVersion"> · UI build: {{ update.buildVersion.slice(0, 12) }}</span><span v-if="update.latestVersion"> · Remote: {{ update.latestVersion }}</span></p></div><span v-if="update" class="status-pill" :class="update.state === 'available' ? 'status-online' : 'status-offline'">{{ update.state }}</span></div><div v-if="update?.enabled && update.requiresToken" class="mt-4"><label class="field-label">Update token <input v-model="updateToken" type="password" autocomplete="off" placeholder="Configured in UPDATE_TOKEN" /></label></div><div class="mt-4 flex flex-wrap gap-2"><button class="secondary-button" :disabled="updateBusy || restartBusy || !update?.enabled" @click="checkForUpdate">{{ updateBusy ? 'Checking…' : 'Check now' }}</button><button v-if="update?.state === 'available'" class="primary-button" :disabled="updateBusy || restartBusy" @click="installUpdate">{{ updateBusy ? 'Updating…' : 'Install and restart' }}</button><button class="secondary-button" :disabled="updateBusy || restartBusy || !update?.enabled" @click="restartService">{{ restartBusy ? 'Restarting…' : 'Restart service' }}</button></div></article></section>
     </template>
   </section>
 </template>

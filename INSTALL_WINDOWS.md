@@ -100,6 +100,14 @@ UPDATE_BRANCH=master
 
 El archivo `.env` no se sube a Git. Sólo `.env.example` se versiona.
 
+Si el servicio `LocalAIRemote` ya está instalado, cualquier cambio en `.env` requiere reiniciarlo para que Node vuelva a cargar la configuración:
+
+```powershell
+Restart-Service -Name LocalAIRemote
+```
+
+Comprueba después `http://localhost:3000/api/health` y vuelve a abrir **System**.
+
 Para activar la autenticación opcional, cambia estos valores antes de iniciar el servicio:
 
 ```env
@@ -234,7 +242,9 @@ UPDATE_TOKEN=un-token-largo-y-aleatorio
 UPDATE_BRANCH=master
 ```
 
-En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y solicita a WinSW el reinicio del proceso. La interfaz espera al menos 5 segundos, comprueba que el servidor volvió a responder y fuerza una recarga con una URL sin caché para mostrar el frontend actualizado. No se aceptan comandos arbitrarios desde el navegador.
+En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install`, `npm run build` y solicita a WinSW el reinicio del proceso. El build genera `apps\web\dist\build-meta.json`; el servidor compara ese commit con el source y la UI sólo recarga después de confirmar que el servicio volvió con un nuevo `startedAt` y que el build coincide. No se aceptan comandos arbitrarios desde el navegador.
+
+Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\local-ai-remote\logs`.
 
 El repositorio debe tener el remoto Git configurado y la cuenta que ejecuta WinSW debe poder leerlo. Usa esta función sólo dentro de Tailscale; no publiques el puerto en Internet.
 

@@ -1,4 +1,7 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { AppConfig } from "../config";
 import { AppError } from "../errors";
@@ -9,6 +12,7 @@ export interface UpdateStatus {
   state: "idle" | "checking" | "available" | "updating" | "restart-required" | "failed" | "unavailable";
   currentVersion: string;
   latestVersion?: string;
+  buildVersion?: string;
   message?: string;
   checkedAt?: string;
   tokenConfigured?: boolean;
@@ -18,6 +22,11 @@ export interface UpdateStatus {
 export interface ServerVersion {
   commit: string;
   shortCommit: string;
+  buildCommit: string;
+  buildShortCommit: string;
+  runningCommit: string;
+  runningShortCommit: string;
+  bootId: string;
   branch: string;
   startedAt: string;
 }
@@ -26,9 +35,18 @@ export class UpdateService {
   private readonly config: AppConfig;
   private running = false;
   private readonly startedAt = new Date().toISOString();
+  private readonly buildMetadataPath: string;
+  private readonly runningCommit: string;
+  private readonly bootId = randomUUID();
 
   constructor(config: AppConfig) {
     this.config = config;
+    this.buildMetadataPath = path.join(config.projectRoot, "apps", "web", "dist", "build-meta.json");
+    try {
+      this.runningCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: config.projectRoot, timeout: 10_000, windowsHide: true, encoding: "utf8" }).trim() || "unknown";
+    } catch {
+      this.runningCommit = "unknown";
+    }
   }
 
   private base(state: UpdateStatus["state"] = "idle"): UpdateStatus {
@@ -44,14 +62,36 @@ export class UpdateService {
     try { return await this.git(["rev-parse", "--short", "HEAD"]); } catch { return "unknown"; }
   }
 
+  private async currentBuildVersion(): Promise<string> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.buildMetadataPath, "utf8"));
+      if (typeof parsed === "object" && parsed !== null && "commit" in parsed && typeof parsed.commit === "string" && parsed.commit.length > 0) {
+        return parsed.commit;
+      }
+    } catch {
+      // A missing marker means the compiled web bundle predates build identity support.
+    }
+    return "unknown";
+  }
+
+  private commitsMatch(left: string, right: string): boolean {
+    return left !== "unknown" && right !== "unknown" && (left === right || left.startsWith(right) || right.startsWith(left));
+  }
+
   async version(): Promise<ServerVersion> {
-    const [commit, branch] = await Promise.all([
+    const [commit, branch, buildCommit] = await Promise.all([
       this.git(["rev-parse", "HEAD"]).catch(() => "unknown"),
       this.git(["branch", "--show-current"]).catch(() => "unknown"),
+      this.currentBuildVersion(),
     ]);
     return {
       commit,
       shortCommit: commit === "unknown" ? "unknown" : commit.slice(0, 7),
+      buildCommit,
+      buildShortCommit: buildCommit === "unknown" ? "unknown" : buildCommit.slice(0, 7),
+      runningCommit: this.runningCommit,
+      runningShortCommit: this.runningCommit === "unknown" ? "unknown" : this.runningCommit.slice(0, 7),
+      bootId: this.bootId,
       branch: branch || "unknown",
       startedAt: this.startedAt,
     };
@@ -68,6 +108,7 @@ export class UpdateService {
   async check(): Promise<UpdateStatus> {
     const status = this.base("checking");
     status.currentVersion = await this.currentVersion();
+    status.buildVersion = await this.currentBuildVersion();
     status.checkedAt = new Date().toISOString();
     if (!this.config.updateEnabled) {
       status.state = "unavailable";
@@ -78,8 +119,12 @@ export class UpdateService {
       const remote = await this.git(["ls-remote", "origin", this.config.updateBranch]);
       const latest = remote.split(/\s+/)[0] || status.currentVersion;
       status.latestVersion = latest.slice(0, 12);
-      status.state = latest && !latest.startsWith(status.currentVersion) ? "available" : "idle";
-      status.message = status.state === "available" ? "A new version is available" : "This server is up to date";
+      const sourceMatchesRemote = this.commitsMatch(latest, status.currentVersion);
+      const buildMatchesSource = this.commitsMatch(status.currentVersion, status.buildVersion || "unknown");
+      status.state = !sourceMatchesRemote || !buildMatchesSource ? "available" : "idle";
+      status.message = !buildMatchesSource
+        ? "The server source and compiled UI are out of sync; rebuild required"
+        : status.state === "available" ? "A new version is available" : "This server is up to date";
     } catch {
       status.state = "failed";
       status.message = "Unable to check the Git remote";
@@ -110,6 +155,10 @@ export class UpdateService {
       await execFileAsync(npm, ["install"], { cwd, timeout: 30 * 60_000, windowsHide: true });
       await execFileAsync(npm, ["run", "build"], { cwd, timeout: 30 * 60_000, windowsHide: true });
       status.currentVersion = await this.currentVersion();
+      status.buildVersion = await this.currentBuildVersion();
+      if (!this.commitsMatch(status.currentVersion, status.buildVersion)) {
+        throw new AppError("UPDATE_FAILED", "The build completed but its UI bundle does not match the current source commit", 502);
+      }
       status.state = "restart-required";
       status.message = "Update installed; requesting a service restart";
       this.requestRestart();

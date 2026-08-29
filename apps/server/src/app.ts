@@ -40,6 +40,11 @@ export async function buildApp(
     await app.register(fastifyStatic, {
       root: webDist,
       wildcard: false,
+      setHeaders: (response, filePath) => {
+        if (filePath.endsWith("index.html") || filePath.endsWith("sw.js")) {
+          response.header("Cache-Control", "no-cache, no-store, must-revalidate");
+        }
+      },
     });
     app.setNotFoundHandler((request, reply) => {
       if (request.url.startsWith("/api/")) {

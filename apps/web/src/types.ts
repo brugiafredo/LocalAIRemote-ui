@@ -39,6 +39,7 @@ export interface UpdateStatus {
   state: "idle" | "checking" | "available" | "updating" | "restart-required" | "failed" | "unavailable";
   currentVersion: string;
   latestVersion?: string;
+  buildVersion?: string;
   message?: string;
   checkedAt?: string;
   releaseUrl?: string;
@@ -49,6 +50,11 @@ export interface UpdateStatus {
 export interface ServerVersion {
   commit: string;
   shortCommit: string;
+  buildCommit: string;
+  buildShortCommit: string;
+  runningCommit: string;
+  runningShortCommit: string;
+  bootId: string;
   branch: string;
   startedAt: string;
 }
