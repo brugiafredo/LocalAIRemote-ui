@@ -1,0 +1,27 @@
+#!/bin/zsh
+set -euo pipefail
+
+readonly keychain_service="escarlet-local-ai-bridge"
+readonly keychain_account="${USER:?USER is not set}"
+
+if ! bridge_token="$(security find-generic-password -a "$keychain_account" -s "$keychain_service" -w 2>/dev/null)" || [[ -z "$bridge_token" ]]; then
+  print -u2 "OpenCode bridge token not found in macOS Keychain."
+  print -u2 "Add it without exposing it in shell history:"
+  print -u2 "  security add-generic-password -U -a \"\$USER\" -s $keychain_service -w"
+  exit 2
+fi
+
+export LOCAL_AI_BRIDGE_TOKEN="$bridge_token"
+unset bridge_token
+
+if [[ "${1:-}" == "--desktop" ]]; then
+  shift
+  if pgrep -f '/Applications/OpenCode.app/Contents/MacOS/OpenCode' >/dev/null 2>&1; then
+    print -u2 "OpenCode Desktop is already running. Quit it completely, then run this launcher again."
+    exit 3
+  fi
+  /Applications/OpenCode.app/Contents/MacOS/OpenCode "$@" >/dev/null 2>&1 &!
+  exit 0
+fi
+
+exec /usr/local/bin/opencode "$@"

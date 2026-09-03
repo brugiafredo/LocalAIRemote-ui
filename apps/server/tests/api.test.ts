@@ -213,6 +213,195 @@ describe("OpenCode bridge", () => {
     });
   });
 
+  it("forwards OpenAI tools and tool-result messages and returns tool calls", async () => {
+    const provider = new ToolProvider(true);
+    app = await buildApp(bridgeConfig, new ProviderRegistry([provider]), new FixedSystemService());
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [{ role: "user", content: "Check the server" }],
+        tools: [{
+          type: "function",
+          function: {
+            name: "get_system_info",
+            description: "Read system information",
+            parameters: { type: "object", properties: {}, additionalProperties: false },
+          },
+        }],
+        tool_choice: "auto",
+        stream: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(provider.lastRequest).toMatchObject({
+      tools: [{ type: "function", function: { name: "get_system_info" } }],
+      messages: [{ role: "user", content: "Check the server" }],
+    });
+    expect(response.json()).toMatchObject({
+      choices: [{
+        finish_reason: "tool_calls",
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "tool-1", type: "function", function: { name: "get_system_info", arguments: "{}" } }],
+        },
+      }],
+    });
+
+    const continuation = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [
+          { role: "user", content: "Check the server" },
+          { role: "assistant", content: null, tool_calls: [{ id: "tool-1", type: "function", function: { name: "get_system_info", arguments: "{}" } }] },
+          { role: "tool", tool_call_id: "tool-1", content: "{\"status\":\"ok\"}" },
+        ],
+        tools: [{ type: "function", function: { name: "get_system_info", parameters: { type: "object" } } }],
+        stream: false,
+      },
+    });
+    expect(continuation.statusCode).toBe(200);
+    expect(continuation.json()).toMatchObject({ choices: [{ message: { content: "The server is healthy." }, finish_reason: "stop" }] });
+    expect(provider.lastRequest?.messages).toEqual([
+      { role: "user", content: "Check the server" },
+      { role: "assistant", content: "", toolCalls: [{ id: "tool-1", name: "get_system_info", arguments: "{}" }] },
+      { role: "tool", content: "{\"status\":\"ok\"}", toolCallId: "tool-1" },
+    ]);
+  });
+
+  it("streams OpenAI-compatible tool call deltas", async () => {
+    app = await buildApp(bridgeConfig, new ProviderRegistry([new ToolProvider(true)]), new FixedSystemService());
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [{ role: "user", content: "Check the server" }],
+        tools: [{ type: "function", function: { name: "get_system_info", parameters: { type: "object" } } }],
+        stream: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('"tool_calls":[{"index":0,"id":"tool-1","type":"function","function":{"name":"get_system_info","arguments":"{}"}}]');
+    expect(response.body).toContain('"finish_reason":"tool_calls"');
+    expect(response.body).toContain("data: [DONE]");
+  });
+
+  it("fails clearly when the selected model cannot support tools", async () => {
+    app = await buildApp(bridgeConfig, new ProviderRegistry([new TestProvider(true)]), new FixedSystemService());
+    const unsupportedModel = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [{ role: "user", content: "hello" }],
+        tools: [{ type: "function", function: { name: "example", parameters: { type: "object" } } }],
+      },
+    });
+    expect(unsupportedModel.statusCode).toBe(400);
+    expect(unsupportedModel.json()).toMatchObject({ error: { code: "VALIDATION_ERROR", message: expect.stringContaining("does not advertise tool support") } });
+  });
+
+  it("treats required and named tool_choice as auto for local providers", async () => {
+    const provider = new ToolProvider(true);
+    app = await buildApp(bridgeConfig, new ProviderRegistry([provider]), new FixedSystemService());
+    const requiredChoice = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [{ role: "user", content: "hello" }],
+        tools: [{ type: "function", function: { name: "example" } }],
+        tool_choice: "required",
+        stream: false,
+      },
+    });
+    expect(requiredChoice.statusCode).toBe(200);
+    expect(provider.lastRequest?.tools).toEqual([expect.objectContaining({ function: expect.objectContaining({ name: "example" }) })]);
+
+    const namedChoice = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [{ role: "user", content: "hello" }],
+        tools: [{ type: "function", function: { name: "example", parameters: { type: "object" } } }],
+        tool_choice: { type: "function", function: { name: "example" } },
+        stream: false,
+      },
+    });
+    expect(namedChoice.statusCode).toBe(200);
+    expect(provider.lastRequest?.enableTools).toBe(true);
+  });
+
+  it("honors tool_choice none as a normal chat request", async () => {
+    const provider = new TestProvider(true);
+    app = await buildApp(bridgeConfig, new ProviderRegistry([provider]), new FixedSystemService());
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [{ role: "user", content: "hello" }],
+        tools: [{ type: "function", function: { name: "example", parameters: { type: "object" } } }],
+        tool_choice: "none",
+        stream: false,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(provider.lastRequest?.tools).toBeUndefined();
+  });
+
+  it("keeps bridge text requests bounded at the documented per-message limit", async () => {
+    app = await buildApp(bridgeConfig, new ProviderRegistry([new TestProvider(true)]), new FixedSystemService());
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: { model: "lmstudio/test-model", messages: [{ role: "user", content: "a".repeat(200_000) }], stream: false },
+    });
+    expect(accepted.statusCode).toBe(200);
+
+    const rejected = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: { model: "lmstudio/test-model", messages: [{ role: "user", content: "a".repeat(200_001) }], stream: false },
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+
+    const aggregateRejected = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: "Bearer bridge-secret" },
+      payload: {
+        model: "lmstudio/test-model",
+        messages: [
+          { role: "user", content: "a".repeat(180_000) },
+          { role: "assistant", content: "b".repeat(180_000) },
+          { role: "user", content: "c".repeat(180_000) },
+        ],
+        stream: false,
+      },
+    });
+    expect(aggregateRejected.statusCode).toBe(400);
+    expect(aggregateRejected.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+  });
+
   it("rejects unprefixed or unknown model ids", async () => {
     app = await buildApp(bridgeConfig, new ProviderRegistry([new TestProvider(true)]), new FixedSystemService());
     const response = await app.inject({
