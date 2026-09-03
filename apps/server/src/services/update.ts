@@ -48,8 +48,51 @@ export interface ServerVersion {
   startedAt: string;
 }
 
+export interface UpdateServiceDependencies {
+  runGit?: (args: string[]) => Promise<string>;
+  runNpm?: (args: string[]) => Promise<void>;
+  scheduleRestart?: () => void;
+  runningCommit?: string;
+}
+
+interface TrackedChange {
+  status: string;
+  path: string;
+}
+
+function parseTrackedChanges(output: string): TrackedChange[] {
+  const changes: TrackedChange[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    if (!line || line.startsWith("# ") || line.startsWith("? ") || line.startsWith("! ")) continue;
+    const fields = line.split(" ");
+    if (fields[0] === "1" && fields.length >= 9) {
+      changes.push({ status: fields[1] || "??", path: fields.slice(8).join(" ") });
+      continue;
+    }
+    if (fields[0] === "2" && fields.length >= 10) {
+      changes.push({ status: fields[1] || "??", path: fields.slice(9).join(" ") });
+      continue;
+    }
+    if (fields[0] === "u" && fields.length >= 11) {
+      changes.push({ status: fields[1] || "UU", path: fields.slice(10).join(" ") });
+      continue;
+    }
+    // An unknown tracked status record is still a reason to fail closed. Keeping
+    // the bounded record in the diagnostic is safer than pulling over it.
+    changes.push({ status: "??", path: line });
+  }
+  return changes;
+}
+
+function trackedChangesDetail(changes: TrackedChange[]): string {
+  const visible = changes.slice(0, 20).map((change) => `${change.status} ${change.path}`);
+  if (changes.length > visible.length) visible.push(`... and ${changes.length - visible.length} more`);
+  return visible.join("; ");
+}
+
 export class UpdateService {
   private readonly config: AppConfig;
+  private readonly dependencies: UpdateServiceDependencies;
   private running = false;
   private restartScheduled = false;
   private readonly startedAt = new Date().toISOString();
@@ -57,9 +100,14 @@ export class UpdateService {
   private readonly runningCommit: string;
   private readonly bootId = randomUUID();
 
-  constructor(config: AppConfig) {
+  constructor(config: AppConfig, dependencies: UpdateServiceDependencies = {}) {
     this.config = config;
+    this.dependencies = dependencies;
     this.buildMetadataPath = path.join(config.projectRoot, "apps", "web", "dist", "build-meta.json");
+    if (dependencies.runningCommit !== undefined) {
+      this.runningCommit = dependencies.runningCommit;
+      return;
+    }
     try {
       this.runningCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: config.projectRoot, timeout: 10_000, windowsHide: true, encoding: "utf8" }).trim() || "unknown";
     } catch {
@@ -72,11 +120,13 @@ export class UpdateService {
   }
 
   private async git(args: string[]): Promise<string> {
+    if (this.dependencies.runGit) return (await this.dependencies.runGit(args)).trim();
     const result = await execFileAsync("git", args, { cwd: this.config.projectRoot ?? process.cwd(), timeout: 120_000, windowsHide: true });
     return result.stdout.trim();
   }
 
   private async npm(args: string[]): Promise<void> {
+    if (this.dependencies.runNpm) return this.dependencies.runNpm(args);
     const cwd = this.config.projectRoot ?? process.cwd();
     const timeout = 30 * 60_000;
     if (process.platform === "win32") {
@@ -108,6 +158,34 @@ export class UpdateService {
     return left !== "unknown" && right !== "unknown" && (left === right || left.startsWith(right) || right.startsWith(left));
   }
 
+  private async assertTrackedTreeClean(phase: "before pull" | "after dependency installation" | "after build"): Promise<void> {
+    let output: string;
+    try {
+      // Porcelain v2 gives stable status fields. Deliberately exclude untracked
+      // and ignored files so .env, data, logs, dist, node_modules and WinSW
+      // runtime artifacts cannot block or be modified by the updater.
+      output = await this.git(["status", "--porcelain=v2", "--untracked-files=no", "--ignore-submodules=none"]);
+    } catch (error) {
+      const detail = updateErrorDetail(error);
+      throw new AppError(
+        "UPDATE_FAILED",
+        `Unable to verify that the Git checkout is clean ${phase}; the update was stopped without changing files${detail ? `: ${detail}` : "."}`,
+        502,
+      );
+    }
+    const changes = parseTrackedChanges(output);
+    if (changes.length === 0) return;
+
+    const action = phase === "before pull" ? "before pulling" : "before restarting";
+    throw new AppError(
+      "UPDATE_FAILED",
+      `Update blocked ${action} because tracked or staged Git changes are present (${trackedChangesDetail(changes)}). ` +
+        "Inspect them manually with `git status --short --untracked-files=no`, `git diff`, and `git diff --cached`. " +
+        "After reviewing, either commit the intentional changes or restore only the chosen paths with `git restore --worktree -- <path>` and/or `git restore --staged -- <path>`, then retry. No files were restored automatically.",
+      409,
+    );
+  }
+
   async version(): Promise<ServerVersion> {
     const [commit, branch, buildCommit] = await Promise.all([
       this.git(["rev-parse", "HEAD"]).catch(() => "unknown"),
@@ -131,6 +209,10 @@ export class UpdateService {
     if (this.config.nodeEnv !== "production") return;
 
     this.restartScheduled = true;
+    if (this.dependencies.scheduleRestart) {
+      this.dependencies.scheduleRestart();
+      return;
+    }
     const winSwPath = path.join(this.config.projectRoot, "scripts", "windows", "LocalAIRemote.exe");
     if (process.platform === "win32" && existsSync(winSwPath)) {
       try {
@@ -202,11 +284,16 @@ export class UpdateService {
     const status = this.base("updating");
     try {
       if (!/^[A-Za-z0-9._/-]+$/.test(this.config.updateBranch) || this.config.updateBranch.startsWith("-")) throw new AppError("UPDATE_FAILED", "Invalid update branch configuration", 500);
+      await this.assertTrackedTreeClean("before pull");
       await this.git(["pull", "--ff-only", "origin", this.config.updateBranch]);
       // The service normally runs with NODE_ENV=production, but the production
       // build still needs devDependencies such as vue-tsc and Vite.
-      await this.npm(["install", "--include=dev"]);
+      // npm ci validates package-lock.json and installs it without rewriting the
+      // dependency graph, unlike npm install in the tracked checkout.
+      await this.npm(["ci", "--include=dev"]);
+      await this.assertTrackedTreeClean("after dependency installation");
       await this.npm(["run", "build"]);
+      await this.assertTrackedTreeClean("after build");
       status.currentVersion = await this.currentVersion();
       status.buildVersion = await this.currentBuildVersion();
       if (!this.commitsMatch(status.currentVersion, status.buildVersion)) {
