@@ -19,7 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${apiBase}${path}`, { credentials: "include", ...init, headers: { accept: "application/json", ...(init?.headers ?? {}) } });
   } catch {
-    throw new ApiError("The Local AI server is unreachable", "SERVER_OFFLINE", 503);
+    throw new ApiError("The Escarlet Local AI UI server is unreachable", "SERVER_OFFLINE", 503);
   }
   const payload: unknown = response.status === 204 ? undefined : await response.json().catch(() => undefined);
   if (!response.ok) {
@@ -103,7 +103,7 @@ export const api = {
         body: JSON.stringify(input),
       });
     } catch {
-      throw new ApiError("The Local AI server is unreachable", "SERVER_OFFLINE", 503);
+      throw new ApiError("The Escarlet Local AI UI server is unreachable", "SERVER_OFFLINE", 503);
     }
     if (!response.ok || !response.body) {
       const payload: unknown = await response.json().catch(() => undefined);

@@ -1,6 +1,6 @@
-# Local AI Remote
+# Escarlet Local AI UI
 
-Local AI Remote is a private, responsive web interface for discovering, loading, unloading, and chatting with models hosted by **LM Studio** and **Ollama** on the same Windows machine. The browser only talks to the Fastify backend; provider APIs remain bound to their local machine.
+Escarlet Local AI UI is a private, responsive web interface for discovering, loading, unloading, and chatting with models hosted by **LM Studio** and **Ollama** on the same Windows machine. The browser only talks to the Fastify backend; provider APIs remain bound to their local machine.
 
 ## Requirements
 
@@ -12,8 +12,8 @@ Local AI Remote is a private, responsive web interface for discovering, loading,
 ## Install and run
 
 ```powershell
-git clone <your-repository-url> C:\Apps\local-ai-remote
-cd C:\Apps\local-ai-remote
+git clone https://github.com/brugiafredo/escarlet-local-ai-ui.git C:\Apps\escarlet-local-ai-ui
+cd C:\Apps\escarlet-local-ai-ui
 npm install
 copy .env.example .env
 npm run build
@@ -21,6 +21,18 @@ npm run start
 ```
 
 For a manual launch, copy `.env.example` to `.env` once and adjust the provider URLs if needed. The Windows service installer creates `.env` automatically when it is missing and never overwrites an existing file. The `.env` file contains machine-specific configuration and is ignored by Git.
+
+### Existing installations at the legacy path
+
+An installation already running from `C:\Apps\local-ai-remote` remains compatible. **Do not move that directory while the WinSW service is installed.** First stop the `LocalAIRemote` service and uninstall its WinSW service definition; preserve `.env`, `data`, and `logs`; then move the project only if desired and reinstall the service with the new project path. GitHub redirects the previous repository URL after the rename, so updates can continue temporarily, but an administrator should keep the remote named `origin` and update it explicitly:
+
+```powershell
+cd C:\Apps\local-ai-remote
+git remote set-url origin https://github.com/brugiafredo/escarlet-local-ai-ui.git
+git remote -v
+```
+
+The update branch remains `master`, and existing `LocalAIRemote` service/executable/XML names are intentionally unchanged for compatibility.
 
 Open [http://localhost:3000](http://localhost:3000). Production uses one Fastify port for both `/api/*` and the compiled Vue SPA.
 
@@ -62,16 +74,16 @@ For example: `http://100.106.130.118:3000`. The server listens on `0.0.0.0` by d
 
 ## Windows Firewall
 
-Run PowerShell as Administrator and allow only the Local AI port on the desired profiles:
+Run PowerShell as Administrator and allow only the Escarlet Local AI UI port on the desired profiles:
 
 ```powershell
-New-NetFirewallRule -DisplayName "Local AI Remote TCP 3000" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Private
+New-NetFirewallRule -DisplayName "Escarlet Local AI UI TCP 3000" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Private
 ```
 
 If the machine uses a stricter policy, scope the rule to the Tailscale interface or Tailscale address range. Review and remove it when no longer needed:
 
 ```powershell
-Remove-NetFirewallRule -DisplayName "Local AI Remote TCP 3000"
+Remove-NetFirewallRule -DisplayName "Escarlet Local AI UI TCP 3000"
 ```
 
 The application never changes firewall rules automatically.
@@ -83,10 +95,10 @@ The application never changes firewall rules automatically.
 3. From an elevated PowerShell prompt, run:
 
    ```powershell
-   .\scripts\windows\install-service.ps1 -ProjectRoot "C:\Apps\local-ai-remote"
+   .\scripts\windows\install-service.ps1 -ProjectRoot "C:\Apps\escarlet-local-ai-ui"
    ```
 
-The script first creates `C:\Apps\local-ai-remote\.env` from `.env.example` **only when `.env` does not already exist**. Existing configuration is preserved; the script never overwrites it. It fails clearly if `.env.example` is missing. The script then creates `LocalAIRemote.xml`, installs the service with **Automatic** startup, starts it, and configures restart attempts after failures. The service launches `node apps/server/dist/index.js` with `C:\Apps\local-ai-remote` as its working directory. Make sure `node` is available to the service account's PATH; an absolute Node path can be substituted in the generated XML if the Windows installation uses a per-user Node manager.
+The script first creates `C:\Apps\escarlet-local-ai-ui\.env` from `.env.example` **only when `.env` does not already exist**. Existing configuration is preserved; the script never overwrites it. It fails clearly if `.env.example` is missing. The script then creates `LocalAIRemote.xml`, installs the service with **Automatic** startup, starts it, and configures restart attempts after failures. The service launches `node apps/server/dist/index.js` with `C:\Apps\escarlet-local-ai-ui` as its working directory. Make sure `node` is available to the service account's PATH; an absolute Node path can be substituted in the generated XML if the Windows installation uses a per-user Node manager.
 
 To remove the service without deleting the project:
 

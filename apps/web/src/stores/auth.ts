@@ -14,7 +14,7 @@ export const useAuthStore = defineStore("auth", () => {
       status.value = await api.authStatus();
     } catch (error) {
       status.value = { enabled: false, authenticated: false };
-      useUiStore().showToast(error instanceof ApiError ? error.message : "Unable to connect to the Local AI server", "error");
+      useUiStore().showToast(error instanceof ApiError ? error.message : "Unable to connect to the Escarlet Local AI UI server", "error");
     } finally {
       loading.value = false;
     }

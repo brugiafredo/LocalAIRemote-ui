@@ -9,7 +9,7 @@ onMounted(() => void auth.bootstrap());
 </script>
 
 <template>
-  <div v-if="auth.loading" class="auth-loading"><img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true" /><p>Connecting to Local AI…</p></div>
+  <div v-if="auth.loading" class="auth-loading"><img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true" /><p>Connecting to Escarlet Local AI UI…</p></div>
   <LoginView v-else-if="auth.enabled && !auth.authenticated" />
   <AppShell v-else />
 </template>

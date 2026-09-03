@@ -1,5 +1,5 @@
 param(
-  [string]$ProjectRoot = "C:\Apps\local-ai-remote",
+  [string]$ProjectRoot = "C:\Apps\escarlet-local-ai-ui",
   [string]$WinSWPath = "$PSScriptRoot\LocalAIRemote.exe"
 )
 
@@ -30,8 +30,8 @@ if (-not (Test-Path (Join-Path $ProjectRoot "apps\server\dist\index.js"))) {
 $xml = @"
 <service>
   <id>$serviceId</id>
-  <name>Local AI Remote</name>
-  <description>Private Local AI Remote web interface</description>
+  <name>Escarlet Local AI UI</name>
+  <description>Private Escarlet Local AI UI web interface</description>
   <executable>node</executable>
   <arguments>apps/server/dist/index.js</arguments>
   <workingdirectory>$ProjectRoot</workingdirectory>

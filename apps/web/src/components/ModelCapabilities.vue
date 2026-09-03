@@ -7,7 +7,7 @@ const activeCapability = ref<ModelCapability | null>(null);
 const definitions: Array<{ capability: ModelCapability; icon: string; label: string; supported: string; unsupported: string }> = [
   { capability: "vision", icon: "▧", label: "Vision", supported: "Vision — this model reports that it can analyze images.", unsupported: "Vision — this model does not report image support." },
   { capability: "reasoning", icon: "✦", label: "Reasoning", supported: "Reasoning — this model reports reasoning or thinking support.", unsupported: "Reasoning — this model does not report reasoning support." },
-  { capability: "tools", icon: "⌘", label: "Tools", supported: "Tools — this model supports Local AI's safe read-only tools.", unsupported: "Tools — this model does not report tool-call support." },
+  { capability: "tools", icon: "⌘", label: "Tools", supported: "Tools — this model supports Escarlet Local AI UI's safe read-only tools.", unsupported: "Tools — this model does not report tool-call support." },
   { capability: "embedding", icon: "∿", label: "Embeddings", supported: "Embeddings — this model reports vector embedding support.", unsupported: "Embeddings — this model does not report embedding support." },
 ];
 const visible = computed(() => props.model ? definitions : []);

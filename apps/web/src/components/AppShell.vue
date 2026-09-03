@@ -97,7 +97,7 @@ function removeConversation(id: string): void {
       <div class="flex items-center gap-3 px-4 py-5">
         <img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true" />
         <div>
-          <p class="text-sm font-semibold tracking-wide text-ink">Local AI</p>
+          <p class="text-sm font-semibold tracking-wide text-ink">Escarlet Local AI UI</p>
           <p class="text-[11px] text-muted">Private model workspace</p>
         </div>
         <button class="icon-button ml-auto lg:hidden" aria-label="Close navigation" @click="ui.setDrawer(false)">×</button>
@@ -149,7 +149,7 @@ function removeConversation(id: string): void {
         <div class="flex min-w-0 items-center gap-3">
           <img class="brand-mark small" src="/icon.svg" alt="" aria-hidden="true" />
           <div class="min-w-0">
-            <p class="truncate text-sm font-semibold lg:hidden">Local AI</p>
+            <p class="truncate text-sm font-semibold lg:hidden">Escarlet Local AI UI</p>
             <p class="hidden text-sm font-medium text-muted lg:block">{{ route.name === 'chat' ? 'Chat workspace' : route.name === 'models' ? 'Model library' : 'System monitor' }}</p>
           </div>
         </div>

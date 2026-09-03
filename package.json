@@ -1,5 +1,5 @@
 {
-  "name": "local-ai-remote",
+  "name": "escarlet-local-ai-ui",
   "version": "1.0.0",
   "private": true,
   "description": "Private web UI for local LM Studio and Ollama models.",
@@ -7,11 +7,11 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail -n server,web -c blue,green \"npm run dev --workspace @local-ai/server\" \"npm run dev --workspace @local-ai/web\"",
-    "build": "npm run build --workspace @local-ai/web && npm run build --workspace @local-ai/server",
-    "start": "npm run start --workspace @local-ai/server",
-    "test": "npm run test --workspace @local-ai/server",
-    "typecheck": "npm run typecheck --workspace @local-ai/server && npm run typecheck --workspace @local-ai/web"
+    "dev": "concurrently --kill-others-on-fail -n server,web -c blue,green \"npm run dev --workspace @escarlet-local-ai-ui/server\" \"npm run dev --workspace @escarlet-local-ai-ui/web\"",
+    "build": "npm run build --workspace @escarlet-local-ai-ui/web && npm run build --workspace @escarlet-local-ai-ui/server",
+    "start": "npm run start --workspace @escarlet-local-ai-ui/server",
+    "test": "npm run test --workspace @escarlet-local-ai-ui/server",
+    "typecheck": "npm run typecheck --workspace @escarlet-local-ai-ui/server && npm run typecheck --workspace @escarlet-local-ai-ui/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

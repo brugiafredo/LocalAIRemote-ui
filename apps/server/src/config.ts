@@ -50,7 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     port: positiveInteger(env.PORT, 3000),
     host: env.HOST?.trim() || "0.0.0.0",
-    appName: env.APP_NAME?.trim() || "Local AI",
+    appName: env.APP_NAME?.trim() || "Escarlet Local AI UI",
     nodeEnv,
     lmStudioUrl: optionalUrl(env.LM_STUDIO_URL),
     ollamaUrl: optionalUrl(env.OLLAMA_URL),

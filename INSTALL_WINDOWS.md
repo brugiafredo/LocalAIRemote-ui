@@ -1,6 +1,6 @@
-# Instalación de Local AI Remote en Windows
+# Instalación de Escarlet Local AI UI en Windows
 
-Esta guía instala Local AI Remote en una PC Windows, configura el archivo `.env` y lo registra como un servicio que arranca automáticamente.
+Esta guía instala Escarlet Local AI UI en una PC Windows, configura el archivo `.env` y lo registra como un servicio que arranca automáticamente.
 
 ## 1. Programas que debes descargar
 
@@ -25,7 +25,7 @@ LocalAIRemote.exe
 Después colócalo en:
 
 ```text
-C:\Apps\local-ai-remote\scripts\windows\LocalAIRemote.exe
+C:\Apps\escarlet-local-ai-ui\scripts\windows\LocalAIRemote.exe
 ```
 
 El ejecutable y el archivo XML de configuración deben estar en la misma carpeta. El instalador genera automáticamente `LocalAIRemote.xml`.
@@ -36,22 +36,36 @@ Abre PowerShell y ejecuta:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path C:\Apps | Out-Null
-git clone https://github.com/brugiafredo/LocalAIRemote-ui.git C:\Apps\local-ai-remote
-cd C:\Apps\local-ai-remote
+git clone https://github.com/brugiafredo/escarlet-local-ai-ui.git C:\Apps\escarlet-local-ai-ui
+cd C:\Apps\escarlet-local-ai-ui
 ```
 
 Si el proyecto se copia como ZIP, extrae su contenido directamente en:
 
 ```text
-C:\Apps\local-ai-remote
+C:\Apps\escarlet-local-ai-ui
 ```
 
 Comprueba que exista `package.json` en esa carpeta.
 
-## 3. Instalar dependencias
+### Compatibilidad con instalaciones existentes
+
+Si Escarlet Local AI UI ya está instalada en `C:\Apps\local-ai-remote`, esa ruta antigua sigue siendo compatible. **No muevas la carpeta mientras WinSW siga instalado:** primero detén el servicio `LocalAIRemote`, desinstala su definición con `scripts\windows\uninstall-service.ps1`, conserva `.env`, `data` y `logs`, y sólo después mueve la carpeta (si quieres hacerlo) y reinstala WinSW indicando la nueva ruta.
+
+GitHub redirige el remoto anterior tras el cambio de nombre, por lo que las actualizaciones existentes pueden continuar temporalmente. Aun así, un administrador debe conservar el nombre de remoto `origin` y apuntarlo al URL nuevo:
 
 ```powershell
 cd C:\Apps\local-ai-remote
+git remote set-url origin https://github.com/brugiafredo/escarlet-local-ai-ui.git
+git remote -v
+```
+
+La rama de actualización sigue siendo `master`. Los nombres operativos `LocalAIRemote`, `LocalAIRemote.exe` y `LocalAIRemote.xml` tampoco cambian. Si mantienes la ruta antigua, sustituye `C:\Apps\escarlet-local-ai-ui` por `C:\Apps\local-ai-remote` en los comandos de esta guía.
+
+## 3. Instalar dependencias
+
+```powershell
+cd C:\Apps\escarlet-local-ai-ui
 npm install
 ```
 
@@ -80,7 +94,7 @@ El instalador del servicio crea `.env` automáticamente desde `.env.example` si 
 Por tanto, si vas a instalar el servicio puedes dejar que el script lo cree. Después revisa el archivo si necesitas cambiar puertos o URLs:
 
 ```powershell
-notepad C:\Apps\local-ai-remote\.env
+notepad C:\Apps\escarlet-local-ai-ui\.env
 ```
 
 Configuración por defecto:
@@ -90,7 +104,7 @@ PORT=3000
 HOST=0.0.0.0
 LM_STUDIO_URL=http://127.0.0.1:1234
 OLLAMA_URL=http://127.0.0.1:11434
-APP_NAME=Local AI
+APP_NAME=Escarlet Local AI UI
 NODE_ENV=production
 DATA_DIR=./data
 AUTH_ENABLED=false
@@ -130,8 +144,8 @@ npm run build
 Si los tres comandos terminan correctamente, la aplicación está compilada en:
 
 ```text
-C:\Apps\local-ai-remote\apps\web\dist
-C:\Apps\local-ai-remote\apps\server\dist
+C:\Apps\escarlet-local-ai-ui\apps\web\dist
+C:\Apps\escarlet-local-ai-ui\apps\server\dist
 ```
 
 ## 6. Ejecutar manualmente por primera vez
@@ -181,13 +195,13 @@ En **Models → Ollama** puedes escribir cualquier nombre de modelo de la biblio
 
 LM Studio continúa gestionando sus descargas y eliminaciones desde su propia aplicación. La interfaz remota sí descubre sus modelos, permite cargarlos/descargarlos de memoria y deja chatear con un modelo disponible aunque todavía no esté cargado: LM Studio puede cargarlo automáticamente en el primer mensaje.
 
-## 8. Instalar Local AI Remote como servicio Windows
+## 8. Instalar Escarlet Local AI UI como servicio Windows
 
 Abre **PowerShell como Administrador** y ejecuta:
 
 ```powershell
-cd C:\Apps\local-ai-remote
-.\scripts\windows\install-service.ps1 -ProjectRoot "C:\Apps\local-ai-remote"
+cd C:\Apps\escarlet-local-ai-ui
+.\scripts\windows\install-service.ps1 -ProjectRoot "C:\Apps\escarlet-local-ai-ui"
 ```
 
 El script realiza estas acciones:
@@ -223,12 +237,12 @@ node apps/server/dist/index.js
 Si el servicio no inicia, comprueba que `node` esté disponible en el `PATH` de la cuenta que ejecuta servicios de Windows. También revisa los logs en:
 
 ```text
-C:\Apps\local-ai-remote\logs
+C:\Apps\escarlet-local-ai-ui\logs
 ```
 
 ## 9. Historial compartido entre dispositivos
 
-Las conversaciones se guardan en `C:\Apps\local-ai-remote\data\conversations.json` y además se mantienen en una caché local del navegador. Al abrir la aplicación en otro dispositivo, el historial del servidor se sincroniza. Las conversaciones que ya existían sólo en un navegador se migran cuando el servidor todavía está vacío.
+Las conversaciones se guardan en `C:\Apps\escarlet-local-ai-ui\data\conversations.json` y además se mantienen en una caché local del navegador. Al abrir la aplicación en otro dispositivo, el historial del servidor se sincroniza. Las conversaciones que ya existían sólo en un navegador se migran cuando el servidor todavía está vacío.
 
 Cada registro incluye `ownerId`, `visibility` y `sharedWith` para preparar futuros usuarios y compartir conversaciones. En el uso actual de un solo usuario, `visibility=shared` permite que todos tus dispositivos vean el mismo historial.
 
@@ -244,11 +258,11 @@ UPDATE_BRANCH=master
 
 En **System → Remote updates**, escribe el token y pulsa **Check now**. Si hay commits nuevos, **Install and restart** ejecuta únicamente `git pull --ff-only`, `npm install --include=dev`, `npm run build` y solicita a WinSW su comando de auto-reinicio (`LocalAIRemote.exe restart!`). Aunque el servicio use `NODE_ENV=production`, el build necesita devDependencies como `vue-tsc` y Vite. El build genera `apps\web\dist\build-meta.json`; la UI sólo recarga después de confirmar una nueva instancia del proceso y que el proceso, el build y el commit esperado coinciden. Durante ese reinicio puede cortarse la petición HTTP: la interfaz lo tratará como una petición aceptada y esperará la confirmación. No se aceptan comandos arbitrarios desde el navegador.
 
-Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. El error `spawn EINVAL` en Windows corresponde a instalaciones anteriores que intentaban ejecutar `npm.cmd` como si fuera un ejecutable nativo; el código actual lo ejecuta mediante el shell compatible. Si el servidor todavía está en una de esas versiones, hay que hacer esta primera actualización manual. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\local-ai-remote\logs`. Para recuperar manualmente desde PowerShell como administrador:
+Si aparece `Mismatch`, no fuerces una recarga del navegador. Pulsa **Check now** otra vez: si el source ya está en el commit remoto pero el build quedó viejo, el estado mostrará que hace falta reconstruir y volverá a habilitar **Install and restart**. El error `spawn EINVAL` en Windows corresponde a instalaciones anteriores que intentaban ejecutar `npm.cmd` como si fuera un ejecutable nativo; el código actual lo ejecuta mediante el shell compatible. Si el servidor todavía está en una de esas versiones, hay que hacer esta primera actualización manual. Si el servicio no vuelve, revisa `Get-Service -Name LocalAIRemote` y los logs de `C:\Apps\escarlet-local-ai-ui\logs`. Para recuperar manualmente desde PowerShell como administrador:
 
 ```powershell
 Stop-Service -Name LocalAIRemote
-cd C:\Apps\local-ai-remote
+cd C:\Apps\escarlet-local-ai-ui
 git pull --ff-only origin master
 npm install --include=dev
 npm run build
@@ -286,7 +300,7 @@ Si Tailscale no puede conectarse, abre PowerShell como Administrador y permite e
 
 ```powershell
 New-NetFirewallRule `
-  -DisplayName "Local AI Remote TCP 3000" `
+  -DisplayName "Escarlet Local AI UI TCP 3000" `
   -Direction Inbound `
   -Protocol TCP `
   -LocalPort 3000 `
@@ -301,13 +315,13 @@ El proyecto no modifica el firewall automáticamente. No abras el puerto directa
 Desde PowerShell como Administrador:
 
 ```powershell
-cd C:\Apps\local-ai-remote
+cd C:\Apps\escarlet-local-ai-ui
 git pull origin master
 npm install --include=dev
 npm run typecheck
 npm run test
 npm run build
-.\scripts\windows\install-service.ps1 -ProjectRoot "C:\Apps\local-ai-remote"
+.\scripts\windows\install-service.ps1 -ProjectRoot "C:\Apps\escarlet-local-ai-ui"
 ```
 
 El `.env` existente se conserva durante la actualización.
@@ -315,7 +329,7 @@ El `.env` existente se conserva durante la actualización.
 ## 14. Desinstalar el servicio
 
 ```powershell
-cd C:\Apps\local-ai-remote
+cd C:\Apps\escarlet-local-ai-ui
 .\scripts\windows\uninstall-service.ps1
 ```
 
@@ -334,7 +348,7 @@ LocalAIRemote.exe
 y esté en:
 
 ```text
-C:\Apps\local-ai-remote\scripts\windows
+C:\Apps\escarlet-local-ai-ui\scripts\windows
 ```
 
 ### `Production build not found`
@@ -342,7 +356,7 @@ C:\Apps\local-ai-remote\scripts\windows
 Ejecuta:
 
 ```powershell
-cd C:\Apps\local-ai-remote
+cd C:\Apps\escarlet-local-ai-ui
 npm install --include=dev
 npm run build
 ```
@@ -357,7 +371,7 @@ Comprueba:
 
 ```powershell
 Get-Service -Name LocalAIRemote
-Get-Content C:\Apps\local-ai-remote\logs\* -Tail 100
+Get-Content C:\Apps\escarlet-local-ai-ui\logs\* -Tail 100
 ```
 
 También verifica que Node.js esté disponible para la cuenta del servicio.

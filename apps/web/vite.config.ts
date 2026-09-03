@@ -15,7 +15,7 @@ function buildCommit(): string {
 
 function buildMetadataPlugin(commit: string) {
   return {
-    name: "local-ai-build-metadata",
+    name: "escarlet-local-ai-ui-build-metadata",
     writeBundle() {
       const metadataPath = fileURLToPath(new URL("./dist/build-meta.json", import.meta.url));
       writeFileSync(metadataPath, JSON.stringify({ commit, builtAt: new Date().toISOString() }) + "\n", "utf8");
@@ -37,8 +37,8 @@ export default defineConfig(({ mode }) => {
         registerType: "autoUpdate",
         includeAssets: ["icon.svg"],
         manifest: {
-          name: "Local AI",
-          short_name: "Local AI",
+          name: "Escarlet Local AI UI",
+          short_name: "Escarlet Local AI UI",
           description: "Private remote interface for local AI models",
           theme_color: "#0b0f19",
           background_color: "#0b0f19",

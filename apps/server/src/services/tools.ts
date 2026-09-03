@@ -12,7 +12,7 @@ export const LOCAL_TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: "function",
     function: {
       name: "get_system_info",
-      description: "Get a read-only snapshot of this Local AI server's CPU, memory, GPU, operating system, and uptime.",
+      description: "Get a read-only snapshot of this Escarlet Local AI UI server's CPU, memory, GPU, operating system, and uptime.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },

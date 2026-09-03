@@ -32,7 +32,7 @@ const selectedModel = computed(() => {
 const selectedProvider = computed(() => selectedModel.value ? app.provider(selectedModel.value.provider) : null);
 const connection = computed(() => {
   if (!app.serverOnline) {
-    return { tone: "offline", label: "Local AI server offline", detail: "The browser cannot reach the Local AI service." };
+    return { tone: "offline", label: "Escarlet Local AI UI server offline", detail: "The browser cannot reach the Escarlet Local AI UI service." };
   }
   if (!selectedProvider.value) {
     return { tone: "offline", label: "No provider selected", detail: "Choose a model to connect to a local provider." };
@@ -44,7 +44,7 @@ const connection = computed(() => {
 });
 const statusMessage = computed(() => {
   if (!selectedModel.value) return "Choose a model to begin";
-  if (!app.serverOnline) return "Local AI server offline";
+  if (!app.serverOnline) return "Escarlet Local AI UI server offline";
   if (!selectedProvider.value?.online) return `${selectedModel.value.name} · provider offline`;
   if (!selectedModel.value.loaded && selectedModel.value.provider === "lmstudio") return `${selectedModel.value.name} · auto-loads on first message`;
   if (!selectedModel.value.loaded) return `${selectedModel.value.name} · load before chatting`;
@@ -200,7 +200,7 @@ async function sendMessage(payload: { content: string; images: NonNullable<ChatM
         </div>
         <div v-if="connection.tone === 'offline'" class="provider-status-banner" role="status">
           <span class="status-dot offline" aria-hidden="true" />
-          <span class="flex-1">{{ connection.detail }} <span class="text-muted">{{ app.serverOnline ? 'Check the provider service or its configured URL.' : 'Check that the Local AI service is running.' }}</span></span>
+          <span class="flex-1">{{ connection.detail }} <span class="text-muted">{{ app.serverOnline ? 'Check the provider service or its configured URL.' : 'Check that the Escarlet Local AI UI service is running.' }}</span></span>
           <button type="button" class="text-button" :disabled="app.loadingModels" @click="retryConnection">{{ app.loadingModels ? 'Checking…' : 'Check again' }}</button>
         </div>
         <div v-if="selectedModel && !selectedModel.loaded" class="inline-alert"><span aria-hidden="true">⌁</span><span class="flex-1">{{ selectedModel.provider === 'lmstudio' ? 'LM Studio will load this model automatically when you send the first message.' : `Load ${selectedModel.name} before chatting.` }}</span><button v-if="selectedModel.provider !== 'lmstudio'" class="text-button" :disabled="app.isBusy(selectedModel)" @click="loadSelectedModel">{{ app.isBusy(selectedModel) ? 'Loading…' : 'Load now' }}</button></div>
